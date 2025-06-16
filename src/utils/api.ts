@@ -1,18 +1,17 @@
 // api.ts
 
-// Configuration - Update these values according to your environment
+// Configuration
 const API_CONFIG = {
   BASE_URL: import.meta.env.VITE_API_BASE_URL || '/api',
-  DEFAULT_TIMEOUT: 10000, // 10 seconds
+  DEFAULT_TIMEOUT: 70000, // 10 seconds
   AUTH_PATHS: {
     login: '/login',
     register: '/register',
-    refreshToken: '/refresh',
     forgotPassword: '/forgot-password',
-    resetPassword: '/reset-password'
+    resetPassword: '/reset-password',
+    logout: '/logout'
   }
 };
-
 
 // Type definitions
 export interface User {
@@ -307,11 +306,9 @@ export interface Activity {
   details: string;
 }
 
-// Response interfaces
 interface LoginResponse {
   token: string;
   user: User;
-  refresh_token?: string;
 }
 
 interface RegisterResponse {
@@ -327,7 +324,8 @@ interface ApiResponse<T> {
 
 class ApiClient {
   private token: string | null = null;
-  private activeRefreshTokenRequest: Promise<string> | null = null;
+  private requestQueue: { endpoint: string; options: RequestInit }[] = [];
+  private isRefreshing = false;
 
   constructor() {
     this.token = localStorage.getItem('authToken');
@@ -341,7 +339,6 @@ class ApiClient {
   clearToken() {
     this.token = null;
     localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -365,8 +362,14 @@ class ApiClient {
 
       clearTimeout(timeoutId);
 
+      // Handle 404 specifically
+      if (response.status === 404) {
+        throw new Error(`Endpoint not found: ${endpoint}`);
+      }
+
       if (response.status === 401) {
-        return this.handleUnauthorized(endpoint, options);
+        this.clearToken();
+        throw new Error('Session expired. Please login again.');
       }
 
       if (!response.ok) {
@@ -387,74 +390,14 @@ class ApiClient {
     }
   }
 
-  private async handleUnauthorized<T>(endpoint: string, options: RequestInit): Promise<T> {
-    if (!this.activeRefreshTokenRequest) {
-      this.activeRefreshTokenRequest = this.refreshToken();
-    }
-
-    try {
-      const newToken = await this.activeRefreshTokenRequest;
-      if (newToken) {
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${newToken}`,
-          ...(options.headers as Record<string, string>),
-        };
-
-        const retryResponse = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
-          ...options,
-          headers,
-          credentials: 'include'
-        });
-
-        if (!retryResponse.ok) {
-          throw new Error(`HTTP error! status: ${retryResponse.status}`);
-        }
-
-        return await retryResponse.json() as T;
-      }
-      throw new Error('Session expired. Please login again.');
-    } catch (error) {
-      this.clearToken();
-      throw error;
-    } finally {
-      this.activeRefreshTokenRequest = null;
-    }
-  }
-
-  public async refreshToken(): Promise<string> {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) throw new Error('No refresh token available');
-
-    try {
-      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.AUTH_PATHS.refreshToken}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to refresh token');
-      }
-
-      const data = await response.json();
-      this.setToken(data.token);
-      return data.token;
-    } catch (error) {
-      this.clearToken();
-      throw error;
-    }
-  }
-
   // Authentication endpoints
   async login(email: string, password: string): Promise<LoginResponse> {
-    return this.request<LoginResponse>(API_CONFIG.AUTH_PATHS.login, {
+    const response = await this.request<LoginResponse>(API_CONFIG.AUTH_PATHS.login, {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    this.setToken(response.token);
+    return response;
   }
 
   async register(userData: {
@@ -466,17 +409,20 @@ class ApiClient {
     employer_id?: number;
     phone?: string;
   }): Promise<RegisterResponse> {
-    return this.request<RegisterResponse>(API_CONFIG.AUTH_PATHS.register, {
+    const response = await this.request<RegisterResponse>(API_CONFIG.AUTH_PATHS.register, {
       method: 'POST',
       body: JSON.stringify(userData),
     });
+    this.setToken(response.token);
+    return response;
   }
 
-  async requestRefreshToken(refreshToken: string): Promise<{ token: string }> {
-    return this.request<{ token: string }>(API_CONFIG.AUTH_PATHS.refreshToken, {
-      method: 'POST',
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
+  async logout(): Promise<void> {
+    try {
+      await this.request(API_CONFIG.AUTH_PATHS.logout, { method: 'POST' });
+    } finally {
+      this.clearToken();
+    }
   }
 
   async forgotPassword(email: string): Promise<{ message: string }> {
@@ -721,25 +667,102 @@ class ApiClient {
     return this.request<DashboardStats>('/dashboard/stats');
   }
 
-  // Trainer specific endpoints
+  // Trainer specific endpoints with enhanced 404 handling
   async getTrainerDashboard(): Promise<TrainerDashboard> {
-    return this.request<TrainerDashboard>('/trainer/dashboard');
+    try {
+      return await this.request<TrainerDashboard>('/trainer/dashboard');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.warn('Trainer dashboard endpoint not found, returning empty dashboard');
+        return {
+          recent_modules: [],
+          recent_quiz_results: [],
+          assignment_stats: [],
+          total_learners: 0,
+          active_learners: 0,
+          total_modules: 0,
+          active_modules: 0,
+          recent_completions: []
+        };
+      }
+      throw error;
+    }
   }
 
   async getTrainerModules(): Promise<Module[]> {
-    return this.request<Module[]>('/trainer/modules');
+    try {
+      return await this.request<Module[]>('/trainer/modules');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.warn('Trainer modules endpoint not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getModuleStats(moduleId: number): Promise<ModuleStats> {
-    return this.request<ModuleStats>(`/trainer/modules/${moduleId}/stats`);
+    try {
+      return await this.request<ModuleStats>(`/trainer/modules/${moduleId}/stats`);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.warn('Module stats endpoint not found, returning empty stats');
+        return {
+          module: {
+            id: moduleId,
+            title: '',
+            description: '',
+            category: '',
+            difficulty_level: '',
+            estimated_duration: 0,
+            is_active: false,
+            created_at: '',
+            updated_at: ''
+          },
+          learner_progress: [],
+          quiz_results: []
+        };
+      }
+      throw error;
+    }
   }
 
   async getTrainerLearners(): Promise<User[]> {
-    return this.request<User[]>('/trainer/learners');
+    try {
+      return await this.request<User[]>('/trainer/learners');
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.warn('Trainer learners endpoint not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getLearnerDetails(learnerId: number): Promise<LearnerDetails> {
-    return this.request<LearnerDetails>(`/trainer/learners/${learnerId}`);
+    try {
+      return await this.request<LearnerDetails>(`/trainer/learners/${learnerId}`);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.warn('Learner details endpoint not found, returning empty details');
+        return {
+          learner: {
+            id: learnerId,
+            email: '',
+            first_name: '',
+            last_name: '',
+            role: 'user',
+            is_active: false,
+            created_at: '',
+            updated_at: ''
+          },
+          modules_progress: [],
+          quiz_results: [],
+          badges: []
+        };
+      }
+      throw error;
+    }
   }
 
   async getModuleProgressReport(moduleId?: number, timeRange?: string): Promise<ModuleProgressReport> {
@@ -747,7 +770,26 @@ class ApiClient {
     if (moduleId) params.append('module_id', moduleId.toString());
     if (timeRange) params.append('time_range', timeRange);
     
-    return this.request<ModuleProgressReport>(`/trainer/reports/module-progress?${params.toString()}`);
+    try {
+      return await this.request<ModuleProgressReport>(`/trainer/reports/module-progress?${params.toString()}`);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.warn('Module progress report endpoint not found, returning empty report');
+        return {
+          module_id: moduleId || 0,
+          title: '',
+          learners: [],
+          summary: {
+            total_learners: 0,
+            not_started: 0,
+            in_progress: 0,
+            completed: 0,
+            average_progress: 0
+          }
+        };
+      }
+      throw error;
+    }
   }
 
   async getQuizPerformanceReport(quizId?: number, timeRange?: string): Promise<QuizPerformanceReport> {
@@ -755,7 +797,22 @@ class ApiClient {
     if (quizId) params.append('quiz_id', quizId.toString());
     if (timeRange) params.append('time_range', timeRange);
     
-    return this.request<QuizPerformanceReport>(`/trainer/reports/quiz-performance?${params.toString()}`);
+    try {
+      return await this.request<QuizPerformanceReport>(`/trainer/reports/quiz-performance?${params.toString()}`);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.warn('Quiz performance report endpoint not found, returning empty report');
+        return {
+          quiz_id: quizId || 0,
+          title: '',
+          attempts: 0,
+          average_score: 0,
+          pass_rate: 0,
+          question_stats: []
+        };
+      }
+      throw error;
+    }
   }
 
   // Admin specific endpoints

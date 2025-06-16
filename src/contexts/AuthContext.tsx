@@ -1,24 +1,8 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import { apiClient } from '../utils/api';
+import { apiClient, User } from '../utils/api';
 
 // User type definition
 export type UserRole = 'admin' | 'trainer' | 'user';
-
-export interface User {
-  id: number;
-  email: string;
-  first_name: string;
-  last_name: string;
-  role: UserRole;
-  employer_id?: number;
-  department_id?: number;
-  phone?: string;
-  profile_picture?: string;
-  is_active?: boolean;
-  last_login?: string;
-  created_at?: string;
-  updated_at?: string;
-}
 
 // Type guard for UserRole
 function isUserRole(role: string): role is UserRole {
@@ -57,21 +41,9 @@ interface AuthContextType {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (userData: RegisterData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
-  refreshAuth: () => Promise<string>; // Update the return type to Promise<string>
   clearError: () => void;
-}
-
-interface LoginResponse {
-  token: string;
-  user: any;
-  refresh_token?: string;
-}
-
-interface RegisterResponse {
-  token: string;
-  user: any;
 }
 
 type RegisterData = {
@@ -116,7 +88,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (error instanceof Error) {
           setError(error.message);
         }
-        logout();
+        await logout();
       } finally {
         setIsLoading(false);
       }
@@ -131,14 +103,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsLoading(true);
     clearError();
     try {
-      const response = await apiClient.login(email, password) as LoginResponse;
+      const response = await apiClient.login(email, password);
       
       localStorage.setItem('authToken', response.token);
-      if (response.refresh_token) {
-        localStorage.setItem('refreshToken', response.refresh_token);
-      }
-
       apiClient.setToken(response.token);
+      
       const validatedUser = validateUser(response.user);
       setUser(validatedUser);
       setIsAuthenticated(true);
@@ -157,7 +126,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsLoading(true);
     clearError();
     try {
-      const response = await apiClient.register(userData) as RegisterResponse;
+      const response = await apiClient.register(userData);
       
       localStorage.setItem('authToken', response.token);
       apiClient.setToken(response.token);
@@ -176,13 +145,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [clearError]);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-    apiClient.clearToken();
-    setUser(null);
-    setIsAuthenticated(false);
-    clearError();
+  const logout = useCallback(async () => {
+    try {
+      await apiClient.logout();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      localStorage.removeItem('authToken');
+      apiClient.clearToken();
+      setUser(null);
+      setIsAuthenticated(false);
+      clearError();
+    }
   }, [clearError]);
 
   const updateUser = useCallback((userData: Partial<User>) => {
@@ -190,41 +164,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser({ ...user, ...userData });
     }
   }, [user]);
-
-  const refreshAuth = useCallback(async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    setIsLoading(true);
-    clearError();
-    try {
-      const newToken = await apiClient.refreshToken();
-
-      if (!newToken) {
-        throw new Error('Failed to refresh token: Token is null');
-      }
-
-      localStorage.setItem('authToken', newToken);
-      apiClient.setToken(newToken);
-
-      const userProfile = await apiClient.getProfile();
-      const validatedUser = validateUser(userProfile);
-      setUser(validatedUser);
-      setIsAuthenticated(true);
-      return newToken;
-    } catch (error) {
-      console.error('Failed to refresh auth:', error);
-      if (error instanceof Error) {
-        setError(error.message);
-      }
-      logout();
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [logout, clearError]);
 
   // Context value
   const value = {
@@ -236,7 +175,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     register,
     logout,
     updateUser,
-    refreshAuth,
     clearError,
   };
 
@@ -255,21 +193,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-
-// ApiClient class
-class ApiClient {
-  public async refreshToken(): Promise<string | null> {
-    // Logic to refresh the token
-    const response = await fetch('/api/refresh-token', {
-      method: 'POST',
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to refresh token');
-    }
-
-    const data = await response.json();
-    return data.token || null;
-  }
-}

@@ -119,6 +119,7 @@ export interface QuizResult {
   correct_answers?: Record<string, string>;
   completed_at: string;
 }
+
 export interface Assignment {
   id: number;
   module_id: number;
