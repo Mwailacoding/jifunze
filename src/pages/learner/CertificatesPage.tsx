@@ -14,7 +14,16 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../utils/api';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Badge } from '../../components/ui/Badge';
-import { Certificate } from '../../types';
+
+// Define the Certificate type here to match what's expected in the component
+interface Certificate {
+  id: number;
+  certificate_type: 'module' | 'quiz';
+  item_id: number;
+  certificate_id: string;
+  title: string; // Making title required here
+  generated_at: string;
+}
 
 export const CertificatesPage: React.FC = () => {
   const { showError, showSuccess } = useNotification();
@@ -33,7 +42,13 @@ export const CertificatesPage: React.FC = () => {
           apiClient.getEarnedBadges()
         ]);
         
-        setCertificates(certificatesData);
+        // Transform certificatesData to ensure title is not undefined
+        const transformedCertificates = certificatesData.map(cert => ({
+          ...cert,
+          title: cert.title || `Certificate ${cert.certificate_id}` // Provide a default if title is undefined
+        }));
+        
+        setCertificates(transformedCertificates);
         setEarnedBadges(badgesData);
       } catch (error) {
         showError('Error', 'Failed to load certificates and achievements');

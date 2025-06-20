@@ -12,13 +12,14 @@ export interface User {
   last_login?: string;
   created_at: string;
 }
+
 export interface Module {
   id: number;
   name?: string; // Made optional
   title: string;
   description?: string;
-  category?: string; // Made optional
-  difficulty_level?: 'beginner' | 'intermediate' | 'advanced'; // Made optional
+  category: string; // Made optional
+  difficulty_level: 'beginner' | 'intermediate' | 'advanced'; // Made optional
   estimated_duration?: number;
   is_active?: boolean; // Made optional
   created_by?: number; // Made optional
@@ -155,7 +156,7 @@ export interface UserPoints {
   reason: string;
   awarded_at: string;
 }
-// In src/types/index.ts
+
 export interface LeaderboardEntry {
   id: number;
   first_name: string;
@@ -165,6 +166,8 @@ export interface LeaderboardEntry {
   badges_count: number;
   modules_completed: number;
   rank: number;
+  quizzes_passed: number;  // Added this
+  quizzes_taken: number; 
 }
 
 export interface Certificate {
@@ -199,6 +202,7 @@ export interface DashboardStats {
     last_accessed: string;
   }>;
 }
+
 export interface ProgressSummary {
   total_modules?: number;
   completed_modules?: number;
@@ -213,4 +217,220 @@ export interface ProgressSummary {
     last_accessed?: string;
     score?: number;
   }>;
+}
+
+// Re-export all types from api.ts for convenience
+export * from '../utils/api';
+
+// Additional component-specific types
+export interface ComponentProps {
+  className?: string;
+  children?: React.ReactNode;
+}
+
+export interface LoadingSpinnerProps {
+  size?: 'sm' | 'md' | 'lg';
+  color?: 'primary' | 'secondary' | 'neutral';
+}
+
+export interface ProgressBarProps {
+  value: number;
+  max?: number;
+  size?: 'sm' | 'md' | 'lg';
+  color?: 'primary' | 'secondary' | 'accent' | 'success' | 'warning' | 'error';
+  className?: string;
+  showLabel?: boolean;
+  animated?: boolean;
+}
+
+export interface BadgeProps {
+  children: React.ReactNode;
+  level?: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'bronze' | 'silver' | 'gold' | 'platinum';
+  size?: 'sm' | 'md' | 'lg';
+  earned?: boolean;
+  className?: string;
+}
+
+export interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title?: string;
+  children: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  showCloseButton?: boolean;
+}
+
+export interface FormFieldProps {
+  label?: string;
+  error?: string;
+  required?: boolean;
+  helpText?: string;
+  children: React.ReactNode;
+}
+
+// Quiz-specific types
+export interface QuizNavigationProps {
+  currentIndex: number;
+  totalQuestions: number;
+  answers: Record<number, string>;
+  flaggedQuestions: Set<number>;
+  onNavigate: (index: number) => void;
+  onToggleFlag: (questionId: number) => void;
+}
+
+export interface QuizTimerProps {
+  timeLeft: number | null;
+  warningThreshold?: number;
+  onTimeUp: () => void;
+}
+
+export interface QuizQuestionProps {
+  question: QuizQuestion;
+  answer: string;
+  onChange: (answer: string) => void;
+  isFlagged: boolean;
+  onToggleFlag: () => void;
+  questionNumber: number;
+  totalQuestions: number;
+}
+
+export interface QuizResultsProps {
+  result: QuizResult;
+  quiz: Quiz;
+  onRetake: () => void;
+  onContinue: () => void;
+}
+
+// Layout and navigation types
+export interface NavigationItem {
+  label: string;
+  href: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  badge?: string | number;
+  children?: NavigationItem[];
+}
+
+export interface BreadcrumbItem {
+  label: string;
+  href?: string;
+}
+
+// Table types
+export interface TableColumn<T> {
+  key: keyof T;
+  label: string;
+  render?: (value: any, item: T) => React.ReactNode;
+  sortable?: boolean;
+  width?: string;
+}
+
+export interface TableProps<T> {
+  data: T[];
+  columns: TableColumn<T>[];
+  loading?: boolean;
+  onSort?: (key: keyof T, direction: 'asc' | 'desc') => void;
+  sortKey?: keyof T;
+  sortDirection?: 'asc' | 'desc';
+}
+
+// Form types
+export interface FormData {
+  [key: string]: any;
+}
+
+export interface ValidationRule {
+  required?: boolean;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: RegExp;
+  custom?: (value: any) => string | null;
+}
+
+export interface FormValidation {
+  [key: string]: ValidationRule;
+}
+
+// Chart and analytics types
+export interface ChartDataPoint {
+  label: string;
+  value: number;
+  color?: string;
+}
+
+export interface AnalyticsData {
+  period: string;
+  metrics: {
+    [key: string]: number;
+  };
+}
+
+// File upload types
+export interface FileUploadProps {
+  accept?: string;
+  multiple?: boolean;
+  maxSize?: number;
+  onUpload: (files: File[]) => void;
+  onError?: (error: string) => void;
+  placeholder?: string;
+}
+
+// Search and filter types
+export interface SearchFilters {
+  query?: string;
+  category?: string;
+  status?: string;
+  dateRange?: {
+    start: Date;
+    end: Date;
+  };
+  tags?: string[];
+}
+
+export interface SortOption {
+  key: string;
+  label: string;
+  direction?: 'asc' | 'desc';
+}
+
+// Pagination types
+export interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  showInfo?: boolean;
+  itemsPerPage?: number;
+  totalItems?: number;
+}
+
+// Error types
+export interface ApiError {
+  message: string;
+  code?: string;
+  details?: any;
+}
+
+export interface FormErrors {
+  [field: string]: string;
+}
+
+// Theme and styling types
+export type ColorVariant = 'primary' | 'secondary' | 'accent' | 'success' | 'warning' | 'error' | 'neutral';
+export type SizeVariant = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'link';
+
+// State management types
+export interface AsyncState<T> {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export interface ListState<T> extends AsyncState<T[]> {
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+  };
+  filters?: SearchFilters;
+  sort?: SortOption;
 }

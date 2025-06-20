@@ -40,10 +40,6 @@ export const LearnerDashboard: React.FC = () => {
         const progressData = await apiClient.getProgressSummary();
         setProgressSummary(progressData);
 
-        // Fetch recent modules
-        const modulesData = await apiClient.getModules();
-        setRecentModules(modulesData.slice(0, 3));
-
         // Fetch assignments
         const assignmentsData = await apiClient.getAssignments();
         setUpcomingAssignments(assignmentsData.slice(0, 3));
