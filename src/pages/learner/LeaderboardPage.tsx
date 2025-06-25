@@ -34,45 +34,78 @@ export const LeaderboardPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortBy>('points');
   const [showFilters, setShowFilters] = useState(false);
 
-  useEffect(() => {
-    const fetchLeaderboard = async () => {
-      try {
-        setIsLoading(true);
-        const queryParams = new URLSearchParams({ timeRange }).toString();
-        const data = await apiClient.get<LeaderboardEntry[]>(`/leaderboard?${queryParams}`);
-             
-        
-        // Sort the data based on selected criteria
-        const sortedData = [...data].sort((a, b) => {
-          switch (sortBy) {
-            case 'modules':
-              return b.modules_completed - a.modules_completed;
-            case 'quizzes':
-              return b.quizzes_passed - a.quizzes_passed;
-            case 'badges':
-              return b.badges_count - a.badges_count;
-            case 'points':
-            default:
-              return b.total_points - a.total_points;
-          }
-        });
-
-        // Update ranks based on current sort
-        const rankedData = sortedData.map((entry, index) => ({
-          ...entry,
-          rank: index + 1
-        }));
-
-        setLeaderboard(rankedData);
-      } catch (error) {
-        showError('Error', 'Failed to load leaderboard');
-      } finally {
-        setIsLoading(false);
+  const fetchLeaderboard = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Check if user has an employer_id
+      if (!user?.employer_id) {
+        showError('Error', 'You need to be associated with an employer to view the leaderboard');
+        setLeaderboard([]);
+        return;
       }
-    };
 
+      const params = {
+        timeRange,
+        employerId: user.employer_id
+      };
+
+      const queryParams = new URLSearchParams(params).toString();
+      const response = await apiClient.get<LeaderboardEntry[]>(`/api/leaderboard?${queryParams}`);
+           
+      if (!response) {
+        throw new Error('Empty response from server');
+      }
+
+      // Sort the data based on selected criteria
+      const sortedData = [...response].sort((a, b) => {
+        switch (sortBy) {
+          case 'modules':
+            return b.modules_completed - a.modules_completed;
+          case 'quizzes':
+            return b.quizzes_passed - a.quizzes_passed;
+          case 'badges':
+            return b.badges_count - a.badges_count;
+          case 'points':
+          default:
+            return b.total_points - a.total_points;
+        }
+      });
+
+      // Update ranks based on current sort
+      const rankedData = sortedData.map((entry, index) => ({
+        ...entry,
+        rank: index + 1
+      }));
+
+      setLeaderboard(rankedData);
+    } catch (error) {
+      console.error('Failed to fetch leaderboard:', error);
+      
+      // Enhanced error handling
+      if (error.response) {
+        if (error.response.status === 400) {
+          showError('Error', 'You need to be associated with an employer to view the leaderboard');
+        } else if (error.response.status === 404) {
+          showError('Error', 'Leaderboard endpoint not found');
+        } else {
+          showError('Error', 'Failed to load leaderboard data');
+        }
+      } else if (error.request) {
+        showError('Network Error', 'Could not connect to the server');
+      } else {
+        showError('Error', 'Failed to make request');
+      }
+      
+      setLeaderboard([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchLeaderboard();
-  }, [showError, timeRange, sortBy]);
+  }, [timeRange, sortBy, user]);
 
   const getRankIcon = (rank: number) => {
     switch (rank) {

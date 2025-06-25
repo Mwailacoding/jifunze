@@ -1,35 +1,35 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
-  Trophy, 
-  Medal, 
+  BookOpen, 
   Award, 
-  Crown,
+  Target, 
   TrendingUp,
-  Users,
+  Clock,
+  CheckCircle2,
   Star,
-  Target,
-  BookOpen,
-  Zap,
-  Filter,
-  ChevronDown
+  Users,
+  Calendar,
+  Play
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../utils/api';
-import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
-import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
-import { LeaderboardEntry } from '../../types';
+import { Badge } from '../../components/ui/Badge';
+import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { AchievementPopup } from '../../components/ui/AchievementPopup';
+import { ProgressSummary, Module, Assignment } from '../../types';
 
-type TimeRange = 'all' | 'week' | 'month' | 'quarter';
-type SortBy = 'points' | 'modules' | 'quizzes' | 'badges';
-
-export const LeaderboardPage: React.FC = () => {
+export const LearnerDashboard: React.FC = () => {
   const { user } = useAuth();
   const { showError } = useNotification();
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [progressSummary, setProgressSummary] = useState<ProgressSummary | null>(null);
+  const [recentModules, setRecentModules] = useState<Module[]>([]);
+  const [upcomingAssignments, setUpcomingAssignments] = useState<Assignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+<<<<<<< HEAD
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [sortBy, setSortBy] = useState<SortBy>('points');
   const [showFilters, setShowFilters] = useState(false);
@@ -102,58 +102,74 @@ export const LeaderboardPage: React.FC = () => {
       setIsLoading(false);
     }
   };
+=======
+  const [achievement, setAchievement] = useState<any>(null);
+>>>>>>> 7c0ba4748d034f97036f37d35ed6934215ae8379
 
   useEffect(() => {
-    fetchLeaderboard();
-  }, [timeRange, sortBy, user]);
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoading(true);
 
-  const getRankIcon = (rank: number) => {
-    switch (rank) {
-      case 1:
-        return <Crown className="w-6 h-6 text-yellow-500" />;
-      case 2:
-        return <Medal className="w-6 h-6 text-gray-400" />;
-      case 3:
-        return <Award className="w-6 h-6 text-amber-600" />;
-      default:
-        return <span className="text-lg font-bold text-neutral-600">#{rank}</span>;
-    }
+        // Fetch progress summary
+        const progressData = await apiClient.getProgressSummary();
+        setProgressSummary(progressData);
+
+        // Fetch assignments
+        const assignmentsData = await apiClient.getAssignments();
+        setUpcomingAssignments(assignmentsData.slice(0, 3));
+
+      } catch (error) {
+        showError('Error', 'Failed to load dashboard data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [showError]);
+
+  const handleAchievementClose = () => {
+    setAchievement(null);
   };
 
-  const getRankBadgeColor = (rank: number) => {
-    switch (rank) {
-      case 1:
-        return 'from-yellow-400 to-yellow-600';
-      case 2:
-        return 'from-gray-300 to-gray-500';
-      case 3:
-        return 'from-amber-400 to-amber-600';
-      default:
-        return 'from-neutral-200 to-neutral-300';
-    }
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
   };
 
-  const getAvatarGradient = (rank: number) => {
-    switch (rank) {
-      case 1:
-        return 'from-yellow-400 to-yellow-600';
-      case 2:
-        return 'from-gray-300 to-gray-500';
-      case 3:
-        return 'from-amber-400 to-amber-600';
-      default:
-        return 'from-primary-500 to-secondary-500';
+  const quickActions = [
+    {
+      title: 'Browse Modules',
+      description: 'Explore available training content',
+      icon: BookOpen,
+      href: '/modules',
+      color: 'from-primary-500 to-primary-600'
+    },
+    {
+      title: 'View Assignments',
+      description: 'Check your assigned tasks',
+      icon: Target,
+      href: '/assignments',
+      color: 'from-secondary-500 to-secondary-600'
+    },
+    {
+      title: 'Leaderboard',
+      description: 'See how you rank',
+      icon: Award,
+      href: '/leaderboard',
+      color: 'from-accent-500 to-accent-600'
+    },
+    {
+      title: 'Certificates',
+      description: 'Download your achievements',
+      icon: Star,
+      href: '/certificates',
+      color: 'from-purple-500 to-purple-600'
     }
-  };
-
-  const currentUserEntry = leaderboard.find(entry => entry.id === user?.id);
-  const topThree = leaderboard.slice(0, 3);
-  const restOfLeaderboard = leaderboard.slice(3);
-
-  // Statistics calculations
-  const totalUsers = leaderboard.length;
-  const averagePoints = totalUsers > 0 ? Math.round(leaderboard.reduce((sum, entry) => sum + entry.total_points, 0) / totalUsers) : 0;
-  const topScorer = leaderboard[0];
+  ];
 
   if (isLoading) {
     return (
@@ -167,111 +183,103 @@ export const LeaderboardPage: React.FC = () => {
 
   return (
     <Layout>
-      {/* Header */}
+      {/* Welcome Section */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-neutral-900 mb-2">Leaderboard</h1>
-            <p className="text-neutral-600">
-              See how you rank among your peers in learning achievements.
+            <h1 className="text-3xl font-bold text-neutral-900">
+              {getGreeting()}, {user?.first_name}! 👋
+            </h1>
+            <p className="text-neutral-600 mt-1">
+              Ready to continue your learning journey?
             </p>
           </div>
-          
-          {/* Filters */}
-          <div className="relative">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="btn-outline flex items-center space-x-2"
-            >
-              <Filter className="w-4 h-4" />
-              <span>Filters</span>
-              <ChevronDown className="w-4 h-4" />
-            </button>
-            
-            {showFilters && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border z-10">
-                <div className="p-4 space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-neutral-700 mb-2 block">
-                      Sort by
-                    </label>
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as SortBy)}
-                      className="w-full p-2 border rounded-md text-sm"
-                    >
-                      <option value="points">Total Points</option>
-                      <option value="modules">Modules Completed</option>
-                      <option value="quizzes">Quizzes Passed</option>
-                      <option value="badges">Badges Earned</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="text-sm font-medium text-neutral-700 mb-2 block">
-                      Time Range
-                    </label>
-                    <select
-                      value={timeRange}
-                      onChange={(e) => setTimeRange(e.target.value as TimeRange)}
-                      className="w-full p-2 border rounded-md text-sm"
-                    >
-                      <option value="all">All Time</option>
-                      <option value="week">This Week</option>
-                      <option value="month">This Month</option>
-                      <option value="quarter">This Quarter</option>
-                    </select>
-                  </div>
-                </div>
+          <div className="hidden md:flex items-center space-x-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-primary-600">
+                {progressSummary?.total_points || 0}
               </div>
-            )}
+              <div className="text-sm text-neutral-600">Total Points</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-accent-600">
+                {progressSummary?.badges_count || 0}
+              </div>
+              <div className="text-sm text-neutral-600">Badges Earned</div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid md:grid-cols-4 gap-6 mb-8">
-        <div className="card p-6 text-center">
-          <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-            <Users className="w-6 h-6 text-primary-600" />
+      {/* Progress Overview */}
+      <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-primary-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-neutral-900">Learning Progress</h3>
+                <p className="text-sm text-neutral-600">Modules completed</p>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-primary-600">
+              {progressSummary?.completion_percentage || 0}%
+            </div>
           </div>
-          <div className="text-2xl font-bold text-neutral-900 mb-1">
-            {totalUsers}
-          </div>
-          <div className="text-sm text-neutral-600">Active Learners</div>
+          <ProgressBar 
+            value={progressSummary?.completion_percentage || 0} 
+            className="mb-2"
+            animated 
+          />
+          <p className="text-sm text-neutral-600">
+            {progressSummary?.completed_modules || 0} of {progressSummary?.total_modules || 0} modules
+          </p>
         </div>
 
-        <div className="card p-6 text-center">
-          <div className="w-12 h-12 bg-accent-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-            <TrendingUp className="w-6 h-6 text-accent-600" />
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-accent-100 rounded-lg flex items-center justify-center">
+                <Star className="w-5 h-5 text-accent-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-neutral-900">Points Earned</h3>
+                <p className="text-sm text-neutral-600">Total achievement points</p>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-accent-600">
+              {progressSummary?.total_points || 0}
+            </div>
           </div>
-          <div className="text-2xl font-bold text-accent-600 mb-1">
-            {currentUserEntry?.rank || '-'}
+          <div className="text-sm text-neutral-600">
+            Keep learning to earn more points!
           </div>
-          <div className="text-sm text-neutral-600">Your Rank</div>
         </div>
 
-        <div className="card p-6 text-center">
-          <div className="w-12 h-12 bg-secondary-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-            <Star className="w-6 h-6 text-secondary-600" />
+        <div className="card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-secondary-100 rounded-lg flex items-center justify-center">
+                <Award className="w-5 h-5 text-secondary-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-neutral-900">Badges</h3>
+                <p className="text-sm text-neutral-600">Achievement badges</p>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-secondary-600">
+              {progressSummary?.badges_count || 0}
+            </div>
           </div>
-          <div className="text-2xl font-bold text-secondary-600 mb-1">
-            {currentUserEntry?.total_points || 0}
+          <div className="text-sm text-neutral-600">
+            Unlock more by completing modules
           </div>
-          <div className="text-sm text-neutral-600">Your Points</div>
-        </div>
-
-        <div className="card p-6 text-center">
-          <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3">
-            <Zap className="w-6 h-6 text-green-600" />
-          </div>
-          <div className="text-2xl font-bold text-green-600 mb-1">
-            {averagePoints}
-          </div>
-          <div className="text-sm text-neutral-600">Average Points</div>
         </div>
       </div>
 
+<<<<<<< HEAD
       {/* Your Position Card */}
       {currentUserEntry && currentUserEntry.rank > 3 && (
         <div className="card p-6 mb-8 bg-gradient-to-r from-primary-50 to-secondary-50 border-primary-200">
@@ -499,11 +507,22 @@ export const LeaderboardPage: React.FC = () => {
                   ? 'bg-primary-50 border border-primary-200 ring-2 ring-primary-100' 
                   : 'bg-neutral-50 hover:bg-neutral-100'
               }`}
+=======
+      {/* Quick Actions */}
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold text-neutral-900 mb-4">Quick Actions</h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {quickActions.map((action, index) => (
+            <Link
+              key={index}
+              to={action.href}
+              className="card p-4 hover:shadow-xl transition-all duration-300 transform hover:scale-105 group"
+>>>>>>> 7c0ba4748d034f97036f37d35ed6934215ae8379
             >
-              {/* Rank */}
-              <div className="w-12 flex justify-center">
-                {getRankIcon(entry.rank)}
+              <div className={`w-12 h-12 bg-gradient-to-br ${action.color} rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
+                <action.icon className="w-6 h-6 text-white" />
               </div>
+<<<<<<< HEAD
 
               {/* Avatar */}
               <div className={`w-12 h-12 bg-gradient-to-br ${getAvatarGradient(entry.rank)} rounded-full flex items-center justify-center`}>
@@ -584,37 +603,181 @@ export const LeaderboardPage: React.FC = () => {
             <p className="text-neutral-600">Start learning and taking quizzes to appear on the leaderboard!</p>
           </div>
         )}
+=======
+              <h3 className="font-semibold text-neutral-900 mb-1">{action.title}</h3>
+              <p className="text-sm text-neutral-600">{action.description}</p>
+            </Link>
+          ))}
+        </div>
+>>>>>>> 7c0ba4748d034f97036f37d35ed6934215ae8379
       </div>
 
-      {/* Achievement Tips */}
-      <div className="mt-8 card p-6 bg-gradient-to-r from-primary-50 to-secondary-50 border-primary-200">
-        <h3 className="text-lg font-semibold text-primary-900 mb-3 flex items-center space-x-2">
-          <Zap className="w-5 h-5" />
-          <span>Climb the Leaderboard</span>
-        </h3>
-        <div className="grid md:grid-cols-2 gap-4 text-primary-800">
-          <ul className="space-y-2">
-            <li className="flex items-start space-x-2">
-              <div className="w-1.5 h-1.5 bg-primary-600 rounded-full mt-2 flex-shrink-0"></div>
-              <span>Complete modules to earn points and badges</span>
-            </li>
-            <li className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-primary-600 rounded-full flex-shrink-0"></div>
-              <span>Pass quizzes to demonstrate your knowledge</span>
-            </li>
-          </ul>
-          <ul className="space-y-2">
-            <li className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-primary-600 rounded-full flex-shrink-0"></div>
-              <span>Retake quizzes to improve your scores</span>
-            </li>
-            <li className="flex items-center space-x-2">
-              <div className="w-1.5 h-1.5 bg-primary-600 rounded-full flex-shrink-0"></div>
-              <span>Earn badges for special achievements</span>
-            </li>
-          </ul>
+      {/* Main Content Grid */}
+      <div className="grid lg:grid-cols-3 gap-8">
+        {/* Recent Activity & Continue Learning */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Continue Learning */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-neutral-900">Continue Learning</h2>
+              <Link to="/modules" className="text-primary-600 hover:text-primary-700 font-medium">
+                View All
+              </Link>
+            </div>
+            
+            {recentModules.length > 0 ? (
+              <div className="space-y-4">
+                {recentModules.map((module) => (
+                  <div key={module.id} className="flex items-center space-x-4 p-4 bg-neutral-50 rounded-lg hover:bg-neutral-100 transition-colors">
+                    <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-lg flex items-center justify-center">
+                      <BookOpen className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-neutral-900">{module.title}</h3>
+                      <p className="text-sm text-neutral-600 mb-2">{module.category}</p>
+                      <ProgressBar 
+                        value={module.completion_percentage || 0} 
+                        size="sm" 
+                        className="w-full"
+                      />
+                    </div>
+                    <Link
+                      to={`/modules/${module.id}`}
+                      className="btn-primary flex items-center space-x-2"
+                    >
+                      <Play className="w-4 h-4" />
+                      <span>Continue</span>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <BookOpen className="w-12 h-12 text-neutral-400 mx-auto mb-4" />
+                <p className="text-neutral-600">No modules started yet</p>
+                <Link to="/modules" className="btn-primary mt-4">
+                  Explore Modules
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* Recent Activity */}
+          {progressSummary?.recent_activity && progressSummary.recent_activity.length > 0 && (
+            <div className="card p-6">
+              <h2 className="text-xl font-semibold text-neutral-900 mb-4">Recent Activity</h2>
+              <div className="space-y-3">
+                {progressSummary.recent_activity.map((activity, index) => (
+                  <div key={index} className="flex items-center space-x-3 py-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      activity.status === 'completed' ? 'bg-primary-100' : 'bg-neutral-100'
+                    }`}>
+                      {activity.status === 'completed' ? (
+                        <CheckCircle2 className="w-4 h-4 text-primary-600" />
+                      ) : (
+                        <Clock className="w-4 h-4 text-neutral-600" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-neutral-900">
+                        {activity.content_title}
+                      </p>
+                      <p className="text-xs text-neutral-600">
+                        in {activity.module_title}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      activity.status === 'completed' 
+                        ? 'bg-primary-100 text-primary-700' 
+                        : 'bg-neutral-100 text-neutral-700'
+                    }`}>
+                      {activity.status === 'completed' ? 'Completed' : 'In Progress'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Upcoming Assignments */}
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-neutral-900">Upcoming Assignments</h3>
+              <Link to="/assignments" className="text-primary-600 hover:text-primary-700 text-sm">
+                View All
+              </Link>
+            </div>
+            
+            {upcomingAssignments.length > 0 ? (
+              <div className="space-y-3">
+                {upcomingAssignments.map((assignment) => (
+                  <div key={assignment.id} className="p-3 bg-neutral-50 rounded-lg">
+                    <h4 className="font-medium text-neutral-900 text-sm mb-1">
+                      {assignment.module_title}
+                    </h4>
+                    {assignment.due_date && (
+                      <div className="flex items-center space-x-1 text-xs text-neutral-600">
+                        <Calendar className="w-3 h-3" />
+                        <span>Due: {new Date(assignment.due_date).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    <div className="mt-2">
+                      <ProgressBar 
+                        value={assignment.completion_percentage || 0} 
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-neutral-600">No upcoming assignments</p>
+            )}
+          </div>
+
+          {/* Achievement Showcase */}
+          <div className="card p-6">
+            <h3 className="font-semibold text-neutral-900 mb-4">Recent Achievements</h3>
+            <div className="grid grid-cols-3 gap-3">
+              {/* Show some sample badges - you can replace with actual earned badges */}
+              <Badge level="bronze" size="sm" earned name="First Steps" />
+              <Badge level="silver" size="sm" earned={false} name="Quick Learner" />
+              <Badge level="gold" size="sm" earned={false} name="Expert" />
+            </div>
+            <Link 
+              to="/certificates" 
+              className="block text-center text-primary-600 hover:text-primary-700 text-sm mt-4 font-medium"
+            >
+              View All Achievements
+            </Link>
+          </div>
+
+          {/* Learning Streak */}
+          <div className="card p-6 bg-gradient-to-br from-accent-50 to-accent-100">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-accent-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                <TrendingUp className="w-8 h-8 text-white" />
+              </div>
+              <h3 className="font-semibold text-neutral-900 mb-1">Learning Streak</h3>
+              <div className="text-2xl font-bold text-accent-600 mb-1">7 Days</div>
+              <p className="text-sm text-neutral-600">Keep it up! 🔥</p>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Achievement Popup */}
+      {achievement && (
+        <AchievementPopup
+          achievement={achievement}
+          isVisible={!!achievement}
+          onClose={handleAchievementClose}
+        />
+      )}
     </Layout>
   );
 };
