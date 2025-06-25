@@ -438,6 +438,9 @@ def generate_certificate_pdf(certificate_data, preview=False):
 
 def update_leaderboard(user_id, employer_id):
     """Update the leaderboard with user's current stats including quiz performance"""
+    if not employer_id:
+        return  # Skip if user has no employer
+    
     # Get user's current points
     result = execute_query(
         "SELECT COALESCE(SUM(points), 0) as total_points FROM user_points WHERE user_id = %s",
@@ -454,18 +457,17 @@ def update_leaderboard(user_id, employer_id):
     )
     badges_count = result['badges_count']
 
-    # Get modules completed
-    result = execute_query(
-        "SELECT COUNT(DISTINCT m.id) as modules_completed FROM modules m "
+    # Get modules completed (count distinct modules where all content is completed)
+    modules_completed = execute_query(
+        "SELECT COUNT(DISTINCT m.id) as count FROM modules m "
         "JOIN module_content mc ON m.id = mc.module_id "
-        "JOIN user_progress up ON mc.id = up.content_id "
-        "WHERE up.user_id = %s AND up.status = 'completed' "
+        "LEFT JOIN user_progress up ON (mc.id = up.content_id AND up.user_id = %s AND up.status = 'completed') "
         "GROUP BY m.id "
         "HAVING COUNT(mc.id) = SUM(CASE WHEN up.status = 'completed' THEN 1 ELSE 0 END)",
         (user_id,),
         fetch_all=True
     )
-    modules_completed = len(result)
+    modules_completed = len(modules_completed) if modules_completed else 0
 
     # Get quiz performance stats
     quiz_stats = execute_query(
@@ -477,7 +479,11 @@ def update_leaderboard(user_id, employer_id):
         "WHERE user_id = %s",
         (user_id,),
         fetch_one=True
-    )
+    ) or {
+        'quizzes_taken': 0,
+        'quizzes_passed': 0,
+        'avg_quiz_score': 0
+    }
 
     # Update or insert leaderboard entry
     execute_query(
@@ -525,6 +531,26 @@ def get_user_by_email(email):
             user['password_hash'] = new_hash
         return dict_to_json_serializable(user)
     return None
+@app.route('/leaderboard/initialize', methods=['POST'])
+@token_required
+@admin_required
+def initialize_leaderboard(current_user):
+    """Initialize leaderboard data for all users with employers"""
+    try:
+        # Get all users with employer_id
+        users = execute_query(
+            "SELECT id, employer_id FROM users WHERE employer_id IS NOT NULL",
+            fetch_all=True
+        )
+        
+        for user in users:
+            update_leaderboard(user['id'], user['employer_id'])
+            
+        return jsonify({'message': f'Leaderboard initialized for {len(users)} users'}), 200
+    except Exception as e:
+        app.logger.error(f"Error initializing leaderboard: {str(e)}")
+        return jsonify({'message': 'Error initializing leaderboard'}), 500
+        
 @app.route('/register', methods=['POST', 'OPTIONS'])
 def register():
     # Handle CORS preflight request
@@ -2587,6 +2613,11 @@ def award_badge(current_user):
 @app.route('/leaderboard', methods=['GET'])
 @token_required
 def get_leaderboard(current_user):
+    # Default to current user's employer if available
+    employer_id = current_user.get('employer_id')
+    if not employer_id:
+        return jsonify({'message': 'You need to be associated with an employer to view the leaderboard'}), 400
+
     leaderboard = execute_query(
         "SELECT u.id, u.first_name, u.last_name, u.profile_picture, "
         "l.total_points, l.badges_count, l.modules_completed, "
@@ -2597,19 +2628,19 @@ def get_leaderboard(current_user):
         "WHERE l.employer_id = %s "
         "ORDER BY l.total_points DESC, l.avg_quiz_score DESC "
         "LIMIT 20",
-        (current_user.get('employer_id'),),
+        (employer_id,),
         fetch_all=True
     )
 
     # Add current user if not in top 20
     current_user_in_leaderboard = any(user['id'] == current_user['id'] for user in leaderboard)
-    if not current_user_in_leaderboard and current_user.get('employer_id'):
+    if not current_user_in_leaderboard:
         current_user_rank = execute_query(
             "SELECT rank FROM ("
             "SELECT user_id, RANK() OVER (ORDER BY total_points DESC) as rank "
             "FROM leaderboard WHERE employer_id = %s"
             ") as ranked WHERE user_id = %s",
-            (current_user.get('employer_id'), current_user['id']),
+            (employer_id, current_user['id']),
             fetch_one=True
         )
 
@@ -2620,7 +2651,7 @@ def get_leaderboard(current_user):
             "FROM leaderboard l "
             "JOIN users u ON l.user_id = u.id "
             "WHERE l.user_id = %s AND l.employer_id = %s",
-            (current_user['id'], current_user.get('employer_id')),
+            (current_user['id'], employer_id),
             fetch_one=True
         )
 
@@ -2629,7 +2660,6 @@ def get_leaderboard(current_user):
             leaderboard.append(current_user_data)
 
     return jsonify(dict_to_json_serializable(leaderboard))
-
 @app.route('/modules', methods=['POST'])
 @token_required
 @trainer_required
