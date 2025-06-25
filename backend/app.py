@@ -1889,7 +1889,8 @@ def generate_report_pdf(report_data, report_type, current_user):
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
             ]))
-            elements.append
+            elements.append(table)
+
         else:
             # All modules report
             data = [['Module', 'Category', 'Content Items', 'Learners', 'Completed', 'Completion %']]
@@ -3219,6 +3220,16 @@ def add_content_questions(current_user, content_id):
     except Exception as e:
         app.logger.error(f"Error adding questions to content {content_id}: {str(e)}")
         return jsonify({'message': 'Error adding questions'}), 500
+
+@app.route('/modules/recent', methods=['GET'])
+@token_required
+def get_recent_modules(current_user):
+    # Adjust the query as needed (e.g., order by created_at or updated_at)
+    modules = execute_query(
+        "SELECT * FROM modules WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 5",
+        fetch_all=True
+    )
+    return jsonify(dict_to_json_serializable(modules))
 # Error Handlers
 @app.errorhandler(404)
 def not_found(error):

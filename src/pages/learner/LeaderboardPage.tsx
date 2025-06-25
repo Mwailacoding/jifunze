@@ -46,8 +46,8 @@ export const LeaderboardPage: React.FC = () => {
       }
 
       const params = {
-        timeRange,
-        employerId: user.employer_id
+        timeRange: String(timeRange), // ensure string
+        employerId: String(user.employer_id) // ensure string
       };
 
       const queryParams = new URLSearchParams(params).toString();
@@ -83,15 +83,17 @@ export const LeaderboardPage: React.FC = () => {
       console.error('Failed to fetch leaderboard:', error);
       
       // Enhanced error handling
-      if (error.response) {
-        if (error.response.status === 400) {
+      if (typeof error === 'object' && error !== null && 'response' in error) {
+        // If using Axios or similar, error.response is likely present
+        const err = error as { response?: { status: number } };
+        if (err.response?.status === 400) {
           showError('Error', 'You need to be associated with an employer to view the leaderboard');
-        } else if (error.response.status === 404) {
+        } else if (err.response?.status === 404) {
           showError('Error', 'Leaderboard endpoint not found');
         } else {
           showError('Error', 'Failed to load leaderboard data');
         }
-      } else if (error.request) {
+      } else if (typeof error === 'object' && error !== null && 'request' in error) {
         showError('Network Error', 'Could not connect to the server');
       } else {
         showError('Error', 'Failed to make request');

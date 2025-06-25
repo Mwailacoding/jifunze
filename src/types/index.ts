@@ -209,6 +209,7 @@ export interface ProgressSummary {
   completion_percentage?: number;
   total_points?: number;
   badges_count?: number;
+  current_streak: number;
   recent_activity?: Array<{
     content_id?: number;
     content_title?: string;

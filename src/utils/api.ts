@@ -1,3 +1,5 @@
+import { ProgressSummary } from '../types';
+
 // api.ts
 // Configuration
 const API_CONFIG = {
@@ -77,22 +79,6 @@ export interface Progress {
   last_accessed?: string;
   attempts?: number;
   score?: number;
-}
-
-export interface ProgressSummary {
-  total_modules: number;
-  completed_modules: number;
-  completion_percentage: number;
-  total_points: number;
-  badges_count: number;
-  recent_activity: {
-    content_id: number;
-    content_title: string;
-    module_title: string;
-    status: string;
-    last_accessed: string;
-    score?: number;
-  }[];
 }
 
 export interface Quiz {
@@ -823,6 +809,10 @@ class ApiClient {
 
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
+  async getRecentModules(): Promise<Module[]> {
+    return this.request<Module[]>('/modules/recent');
   }
 }
 
