@@ -20,7 +20,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from flask import send_file
 import json
-import time
+from datetime import timedelta
 
 # Ensure the required directories exist
 os.makedirs('logs', exist_ok=True)
@@ -1889,7 +1889,7 @@ def generate_report_pdf(report_data, report_type, current_user):
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
             ]))
-            elements.append(table)
+            elements.append
         else:
             # All modules report
             data = [['Module', 'Category', 'Content Items', 'Learners', 'Completed', 'Completion %']]

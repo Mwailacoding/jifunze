@@ -47,7 +47,7 @@ export const LeaderboardPage: React.FC = () => {
 
       const params = {
         timeRange,
-        employerId: user.employer_id
+        employerId: String(user.employer_id) // Convert to string
       };
 
       const queryParams = new URLSearchParams(params).toString();
@@ -81,22 +81,22 @@ export const LeaderboardPage: React.FC = () => {
       setLeaderboard(rankedData);
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);
-      
-      // Enhanced error handling
-      if (error.response) {
-        if (error.response.status === 400) {
+
+      if (typeof error === 'object' && error !== null && 'response' in error) {
+        const err = error as { response?: { status: number } };
+        if (err.response?.status === 400) {
           showError('Error', 'You need to be associated with an employer to view the leaderboard');
-        } else if (error.response.status === 404) {
+        } else if (err.response?.status === 404) {
           showError('Error', 'Leaderboard endpoint not found');
         } else {
           showError('Error', 'Failed to load leaderboard data');
         }
-      } else if (error.request) {
+      } else if (typeof error === 'object' && error !== null && 'request' in error) {
         showError('Network Error', 'Could not connect to the server');
       } else {
         showError('Error', 'Failed to make request');
       }
-      
+
       setLeaderboard([]);
     } finally {
       setIsLoading(false);
@@ -490,7 +490,8 @@ export const LeaderboardPage: React.FC = () => {
         </h2>
         
         <div className="space-y-3">
-          {leaderboard.map((entry) => (
+          {/* Only show users after the top 3 */}
+          {restOfLeaderboard.map((entry) => (
             <div
               key={entry.id}
               className={`flex items-center space-x-4 p-4 rounded-lg transition-all ${
@@ -517,15 +518,6 @@ export const LeaderboardPage: React.FC = () => {
                   <span>{entry.first_name} {entry.last_name}</span>
                   {entry.id === user?.id && (
                     <Badge level="primary" size="sm">You</Badge>
-                  )}
-                  {entry.rank <= 3 && (
-                    <Badge 
-                      level={entry.rank === 1 ? 'gold' : entry.rank === 2 ? 'silver' : 'bronze'} 
-                      size="sm"
-                      earned
-                    >
-                      Top {entry.rank}
-                    </Badge>
                   )}
                 </h4>
                 
@@ -585,7 +577,7 @@ export const LeaderboardPage: React.FC = () => {
           ))}
         </div>
 
-        {leaderboard.length === 0 && (
+        {restOfLeaderboard.length === 0 && (
           <div className="text-center py-12">
             <Trophy className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-neutral-900 mb-2">No Leaderboard Data</h3>
@@ -626,3 +618,5 @@ export const LeaderboardPage: React.FC = () => {
     </Layout>
   );
 };
+
+

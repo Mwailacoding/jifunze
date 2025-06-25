@@ -11,6 +11,7 @@ import { LoginForm } from './components/auth/LoginForm';
 import { RegisterForm } from './components/auth/RegisterForm';
 
 // Dashboard pages
+
 import { LearnerDashboard } from './pages/learner/LearnerDashboard';
 import { TrainerDashboard } from './pages/trainer/TrainerDashboard';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
