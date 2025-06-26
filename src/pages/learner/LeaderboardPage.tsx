@@ -20,10 +20,23 @@ import { apiClient } from '../../utils/api';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
-import { LeaderboardEntry } from '../../types';
 
 type TimeRange = 'all' | 'week' | 'month' | 'quarter';
 type SortBy = 'points' | 'modules' | 'quizzes' | 'badges';
+
+type LeaderboardEntry = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  total_points: number;
+  modules_completed: number;
+  quizzes_taken: number;
+  quizzes_passed: number;
+  badges_count: number;
+  rank: number;
+  profile_picture?: string;
+};
 
 export const LeaderboardPage: React.FC = () => {
   const { user } = useAuth();
@@ -37,28 +50,19 @@ export const LeaderboardPage: React.FC = () => {
   const fetchLeaderboard = async () => {
     try {
       setIsLoading(true);
-      
-      // Check if user has an employer_id
-      if (!user?.employer_id) {
-        showError('Error', 'You need to be associated with an employer to view the leaderboard');
-        setLeaderboard([]);
-        return;
-      }
 
-      const params = {
-        timeRange: String(timeRange), // ensure string
-        employerId: String(user.employer_id) // ensure string
+      const params: Record<string, string> = {
+        timeRange: String(timeRange),
       };
 
       const queryParams = new URLSearchParams(params).toString();
-      const response = await apiClient.get<LeaderboardEntry[]>(`/api/leaderboard?${queryParams}`);
-           
+      const response = await apiClient.get<LeaderboardEntry[]>(`/leaderboard?${queryParams}`);
+      
       if (!response) {
         throw new Error('Empty response from server');
       }
 
-      // Sort the data based on selected criteria
-      const sortedData = [...response].sort((a, b) => {
+      const sortedData = [...response.leaderboard].sort((a, b) => {
         switch (sortBy) {
           case 'modules':
             return b.modules_completed - a.modules_completed;
@@ -72,22 +76,19 @@ export const LeaderboardPage: React.FC = () => {
         }
       });
 
-      // Update ranks based on current sort
       const rankedData = sortedData.map((entry, index) => ({
         ...entry,
-        rank: index + 1
+        rank: index + 1,
       }));
 
       setLeaderboard(rankedData);
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);
-      
-      // Enhanced error handling
+
       if (typeof error === 'object' && error !== null && 'response' in error) {
-        // If using Axios or similar, error.response is likely present
         const err = error as { response?: { status: number } };
         if (err.response?.status === 400) {
-          showError('Error', 'You need to be associated with an employer to view the leaderboard');
+          showError('Error', 'Invalid request parameters');
         } else if (err.response?.status === 404) {
           showError('Error', 'Leaderboard endpoint not found');
         } else {
@@ -98,7 +99,7 @@ export const LeaderboardPage: React.FC = () => {
       } else {
         showError('Error', 'Failed to make request');
       }
-      
+
       setLeaderboard([]);
     } finally {
       setIsLoading(false);
@@ -152,10 +153,10 @@ export const LeaderboardPage: React.FC = () => {
   const topThree = leaderboard.slice(0, 3);
   const restOfLeaderboard = leaderboard.slice(3);
 
-  // Statistics calculations
   const totalUsers = leaderboard.length;
-  const averagePoints = totalUsers > 0 ? Math.round(leaderboard.reduce((sum, entry) => sum + entry.total_points, 0) / totalUsers) : 0;
-  const topScorer = leaderboard[0];
+  const averagePoints = totalUsers > 0 
+    ? parseFloat((leaderboard.reduce((sum, entry) => sum + entry.total_points, 0) / totalUsers).toFixed(1))
+    : 0.0;
 
   if (isLoading) {
     return (
@@ -169,9 +170,8 @@ export const LeaderboardPage: React.FC = () => {
 
   return (
     <Layout>
-      {/* Header */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-neutral-900 mb-2">Leaderboard</h1>
             <p className="text-neutral-600">
@@ -179,7 +179,6 @@ export const LeaderboardPage: React.FC = () => {
             </p>
           </div>
           
-          {/* Filters */}
           <div className="relative">
             <button
               onClick={() => setShowFilters(!showFilters)}
@@ -231,8 +230,7 @@ export const LeaderboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="card p-6 text-center">
           <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mx-auto mb-3">
             <Users className="w-6 h-6 text-primary-600" />
@@ -267,14 +265,13 @@ export const LeaderboardPage: React.FC = () => {
           <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3">
             <Zap className="w-6 h-6 text-green-600" />
           </div>
-          <div className="text-2xl font-bold text-green-600 mb-1">
+          <div className="text-2xl font-bold text-green-600 mb-1 overflow-hidden text-ellipsis whitespace-nowrap">
             {averagePoints}
           </div>
           <div className="text-sm text-neutral-600">Average Points</div>
         </div>
       </div>
 
-      {/* Your Position Card */}
       {currentUserEntry && currentUserEntry.rank > 3 && (
         <div className="card p-6 mb-8 bg-gradient-to-r from-primary-50 to-secondary-50 border-primary-200">
           <h3 className="text-lg font-semibold text-neutral-900 mb-4 flex items-center space-x-2">
@@ -282,7 +279,7 @@ export const LeaderboardPage: React.FC = () => {
             <span>Your Position</span>
           </h3>
           
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-6">
             <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getRankBadgeColor(currentUserEntry.rank)} flex items-center justify-center`}>
               <span className="text-white font-bold text-lg">#{currentUserEntry.rank}</span>
             </div>
@@ -320,7 +317,6 @@ export const LeaderboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Top 3 Podium */}
       {topThree.length > 0 && (
         <div className="mb-8">
           <h2 className="text-xl font-semibold text-neutral-900 mb-6 flex items-center space-x-2">
@@ -328,158 +324,68 @@ export const LeaderboardPage: React.FC = () => {
             <span>Top Performers</span>
           </h2>
           
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Second Place */}
-            {topThree[1] && (
-              <div className="card p-6 text-center order-1 md:order-1 relative">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {topThree.map((entry, index) => (
+              <div key={entry.id} className="card p-6 text-center relative">
                 <div className="absolute top-2 right-2">
-                  <div className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs font-medium">
-                    2nd
+                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    index === 0 ? 'bg-yellow-100 text-yellow-700' :
+                    index === 1 ? 'bg-gray-100 text-gray-600' :
+                    'bg-amber-100 text-amber-700'
+                  }`}>
+                    {index === 0 ? '1st' : index === 1 ? '2nd' : '3rd'}
                   </div>
                 </div>
                 <div className="relative mb-4">
-                  <div className={`w-20 h-20 bg-gradient-to-br ${getAvatarGradient(2)} rounded-full flex items-center justify-center mx-auto mb-2`}>
-                    <span className="text-white text-lg font-bold">
-                      {topThree[1].first_name[0]}{topThree[1].last_name[0]}
+                  <div className={`w-20 h-20 md:w-24 md:h-24 bg-gradient-to-br ${getAvatarGradient(index + 1)} rounded-full flex items-center justify-center mx-auto mb-2`}>
+                    <span className="text-white text-lg md:text-xl font-bold">
+                      {entry.first_name[0]}{entry.last_name[0]}
                     </span>
                   </div>
                   <div className="absolute -top-2 -right-2">
-                    <Medal className="w-8 h-8 text-gray-400" />
+                    {index === 0 ? <Crown className="w-8 h-8 md:w-10 md:h-10 text-yellow-500" /> :
+                     index === 1 ? <Medal className="w-6 h-6 md:w-8 md:h-8 text-gray-400" /> :
+                     <Award className="w-6 h-6 md:w-8 md:h-8 text-amber-600" />}
                   </div>
                 </div>
                 
                 <h3 className="font-semibold text-neutral-900 mb-1">
-                  {topThree[1].first_name} {topThree[1].last_name}
+                  {entry.first_name} {entry.last_name}
                 </h3>
                 
-                <div className="text-2xl font-bold text-gray-600 mb-2">
-                  {topThree[1].total_points}
+                <div className={`text-2xl md:text-3xl font-bold mb-2 ${
+                  index === 0 ? 'text-yellow-600' :
+                  index === 1 ? 'text-gray-600' :
+                  'text-amber-600'
+                }`}>
+                  {entry.total_points}
                 </div>
                 <div className="text-sm text-neutral-600 mb-3">points</div>
                 
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div className="text-center">
-                    <div className="font-bold">{topThree[1].modules_completed}</div>
+                    <div className="font-bold">{entry.modules_completed}</div>
                     <div className="text-neutral-600">Modules</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-bold">{topThree[1].quizzes_passed}</div>
+                    <div className="font-bold">{entry.quizzes_passed}</div>
                     <div className="text-neutral-600">Quizzes</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-bold">{topThree[1].badges_count}</div>
+                    <div className="font-bold">{entry.badges_count}</div>
                     <div className="text-neutral-600">Badges</div>
                   </div>
                 </div>
                 
                 <div className="flex justify-center mt-3">
-                  <Badge level="silver" size="sm" earned />
+                  <Badge level={index === 0 ? 'gold' : index === 1 ? 'silver' : 'bronze'} size="sm" earned />
                 </div>
               </div>
-            )}
-
-            {/* First Place */}
-            {topThree[0] && (
-              <div className="card p-6 text-center order-2 md:order-2 transform md:scale-110 md:-mt-4 relative">
-                <div className="absolute top-2 right-2">
-                  <div className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-medium">
-                    1st
-                  </div>
-                </div>
-                <div className="relative mb-4">
-                  <div className={`w-24 h-24 bg-gradient-to-br ${getAvatarGradient(1)} rounded-full flex items-center justify-center mx-auto mb-2`}>
-                    <span className="text-white text-xl font-bold">
-                      {topThree[0].first_name[0]}{topThree[0].last_name[0]}
-                    </span>
-                  </div>
-                  <div className="absolute -top-2 -right-2">
-                    <Crown className="w-10 h-10 text-yellow-500" />
-                  </div>
-                </div>
-                
-                <h3 className="font-semibold text-neutral-900 mb-1">
-                  {topThree[0].first_name} {topThree[0].last_name}
-                </h3>
-                
-                <div className="text-3xl font-bold text-yellow-600 mb-2">
-                  {topThree[0].total_points}
-                </div>
-                <div className="text-sm text-neutral-600 mb-3">points</div>
-                
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="text-center">
-                    <div className="font-bold">{topThree[0].modules_completed}</div>
-                    <div className="text-neutral-600">Modules</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-bold">{topThree[0].quizzes_passed}</div>
-                    <div className="text-neutral-600">Quizzes</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-bold">{topThree[0].badges_count}</div>
-                    <div className="text-neutral-600">Badges</div>
-                  </div>
-                </div>
-                
-                <div className="flex justify-center mt-3">
-                  <Badge level="gold" size="sm" earned />
-                </div>
-              </div>
-            )}
-
-            {/* Third Place */}
-            {topThree[2] && (
-              <div className="card p-6 text-center order-3 md:order-3 relative">
-                <div className="absolute top-2 right-2">
-                  <div className="bg-amber-100 text-amber-700 px-2 py-1 rounded-full text-xs font-medium">
-                    3rd
-                  </div>
-                </div>
-                <div className="relative mb-4">
-                  <div className={`w-20 h-20 bg-gradient-to-br ${getAvatarGradient(3)} rounded-full flex items-center justify-center mx-auto mb-2`}>
-                    <span className="text-white text-lg font-bold">
-                      {topThree[2].first_name[0]}{topThree[2].last_name[0]}
-                    </span>
-                  </div>
-                  <div className="absolute -top-2 -right-2">
-                    <Award className="w-8 h-8 text-amber-600" />
-                  </div>
-                </div>
-                
-                <h3 className="font-semibold text-neutral-900 mb-1">
-                  {topThree[2].first_name} {topThree[2].last_name}
-                </h3>
-                
-                <div className="text-2xl font-bold text-amber-600 mb-2">
-                  {topThree[2].total_points}
-                </div>
-                <div className="text-sm text-neutral-600 mb-3">points</div>
-                
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="text-center">
-                    <div className="font-bold">{topThree[2].modules_completed}</div>
-                    <div className="text-neutral-600">Modules</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-bold">{topThree[2].quizzes_passed}</div>
-                    <div className="text-neutral-600">Quizzes</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-bold">{topThree[2].badges_count}</div>
-                    <div className="text-neutral-600">Badges</div>
-                  </div>
-                </div>
-                
-                <div className="flex justify-center mt-3">
-                  <Badge level="bronze" size="sm" earned />
-                </div>
-              </div>
-            )}
+            ))}
           </div>
         </div>
       )}
 
-      {/* Full Leaderboard */}
       <div className="card p-6">
         <h2 className="text-xl font-semibold text-neutral-900 mb-6 flex items-center space-x-2">
           <Trophy className="w-5 h-5 text-primary-600" />
@@ -491,30 +397,27 @@ export const LeaderboardPage: React.FC = () => {
           </span>
         </h2>
         
-        <div className="space-y-3">
+        <div className="space-y-4">
           {leaderboard.map((entry) => (
             <div
               key={entry.id}
-              className={`flex items-center space-x-4 p-4 rounded-lg transition-all ${
+              className={`flex items-center p-4 rounded-lg transition-all ${
                 entry.id === user?.id 
                   ? 'bg-primary-50 border border-primary-200 ring-2 ring-primary-100' 
                   : 'bg-neutral-50 hover:bg-neutral-100'
               }`}
             >
-              {/* Rank */}
-              <div className="w-12 flex justify-center">
+              <div className="w-12 flex justify-center mr-4">
                 {getRankIcon(entry.rank)}
               </div>
 
-              {/* Avatar */}
-              <div className={`w-12 h-12 bg-gradient-to-br ${getAvatarGradient(entry.rank)} rounded-full flex items-center justify-center`}>
+              <div className={`w-12 h-12 bg-gradient-to-br ${getAvatarGradient(entry.rank)} rounded-full flex items-center justify-center mr-4`}>
                 <span className="text-white text-sm font-medium">
                   {entry.first_name[0]}{entry.last_name[0]}
                 </span>
               </div>
 
-              {/* User Info */}
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 pr-4">
                 <h4 className="font-medium text-neutral-900 flex items-center space-x-2">
                   <span>{entry.first_name} {entry.last_name}</span>
                   {entry.id === user?.id && (
@@ -550,7 +453,6 @@ export const LeaderboardPage: React.FC = () => {
                   </div>
                 </div>
                 
-                {/* Quiz Performance Bar */}
                 {entry.quizzes_taken > 0 && (
                   <div className="mt-2">
                     <div className="flex items-center justify-between text-xs text-neutral-500 mb-1">
@@ -566,8 +468,7 @@ export const LeaderboardPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Points Display */}
-              <div className="text-right">
+              <div className="text-right min-w-[100px]">
                 <div className={`text-lg font-bold ${
                   sortBy === 'points' ? 'text-primary-600' :
                   sortBy === 'modules' ? 'text-green-600' :
@@ -584,7 +485,8 @@ export const LeaderboardPage: React.FC = () => {
                 </div>
               </div>
             </div>
-          ))}
+          ))
+          }
         </div>
 
         {leaderboard.length === 0 && (
@@ -596,7 +498,6 @@ export const LeaderboardPage: React.FC = () => {
         )}
       </div>
 
-      {/* Achievement Tips */}
       <div className="mt-8 card p-6 bg-gradient-to-r from-primary-50 to-secondary-50 border-primary-200">
         <h3 className="text-lg font-semibold text-primary-900 mb-3 flex items-center space-x-2">
           <Zap className="w-5 h-5" />

@@ -63,8 +63,19 @@ export const TrainerQuizPage: React.FC = () => {
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // State for assignment data (for quiz assignment modal)
+  const [assignmentData, setAssignmentData] = useState<AssignmentData>({
+    assignment_type: 'all',
+    individual_id: '',
+    department_id: '',
+    employer_id: '',
+    due_date: '',
+    is_mandatory: false,
+    notes: ''
+  });
   
-  // Form states
+  // Form states for adding questions
   const [newQuestion, setNewQuestion] = useState({
     question_text: '',
     question_type: 'multiple_choice' as 'multiple_choice' | 'true_false' | 'short_answer',
@@ -72,16 +83,24 @@ export const TrainerQuizPage: React.FC = () => {
     correct_answer: '',
     points: 1
   });
-  
-  const [assignmentData, setAssignmentData] = useState<AssignmentData>({
-    assignment_type: 'all',
-    individual_id: '',
-    department_id: '',
-    employer_id: '',
-    due_date: '',
-    is_mandatory: true,
-    notes: ''
-  });
+
+  // State for content questions (for /content/<content_id>/questions endpoint)
+  const [contentQuestions, setContentQuestions] = useState([
+    {
+      question_text: 'What is the capital of France?',
+      question_type: 'multiple_choice' as 'multiple_choice' | 'true_false' | 'short_answer',
+      options: ['Paris', 'London', 'Berlin', 'Madrid'],
+      correct_answer: 'Paris',
+    },
+    {
+      question_text: 'Is the sky blue?',
+      question_type: 'true_false',
+      options: ['True', 'False'],
+      correct_answer: 'True',
+    },
+  ]);
+
+  const [showContentQuestionModal, setShowContentQuestionModal] = useState(false);
 
   // Load quizzes for this module
   useEffect(() => {
@@ -167,6 +186,27 @@ export const TrainerQuizPage: React.FC = () => {
     }
   };
 
+  // New function to add content questions to /content/<content_id>/questions
+  const handleAddContentQuestions = async () => {
+    const contentId = 28; // Replace with dynamic contentId if needed
+    try {
+      setIsSubmitting(true);
+      console.log('Sending content questions payload:', JSON.stringify({ questions: contentQuestions }, null, 2));
+      const response = await apiClient.post(`/content/${contentId}/questions`, { questions: contentQuestions });
+      showSuccess('Success', 'Content questions added successfully: ' + JSON.stringify(response));
+      setShowContentQuestionModal(false);
+    } catch (error) {
+      let errorMessage = 'Unknown error';
+      if (typeof error === 'object' && error !== null && 'response' in error) {
+        const err = error as { response?: { data?: { message?: string } } };
+        errorMessage = err.response?.data?.message || 'Unknown error';
+      }
+      showError('Error', 'Failed to add content questions: ' + errorMessage);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleAssignQuiz = async () => {
     try {
       setIsSubmitting(true);
@@ -234,14 +274,24 @@ export const TrainerQuizPage: React.FC = () => {
 
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-neutral-900">Manage Quizzes</h1>
-            <button
-              onClick={handleCreateQuiz}
-              className="btn-primary flex items-center space-x-2"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? <LoadingSpinner size="sm" /> : <PlusCircle className="w-4 h-4" />}
-              <span>Create Quiz</span>
-            </button>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleCreateQuiz}
+                className="btn-primary flex items-center space-x-2"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? <LoadingSpinner size="sm" /> : <PlusCircle className="w-4 h-4" />}
+                <span>Create Quiz</span>
+              </button>
+              <button
+                onClick={() => setShowContentQuestionModal(true)}
+                className="btn-primary flex items-center space-x-2"
+                disabled={isSubmitting}
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Add Content Questions</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -426,7 +476,7 @@ export const TrainerQuizPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Add Question Modal */}
+        {/* Add Question Modal (for quiz questions) */}
         <Modal
           isOpen={showQuestionModal}
           onClose={() => setShowQuestionModal(false)}
@@ -583,6 +633,47 @@ export const TrainerQuizPage: React.FC = () => {
                 className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? <LoadingSpinner size="sm" /> : 'Add Question'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Add Content Questions Modal */}
+        <Modal
+          isOpen={showContentQuestionModal}
+          onClose={() => setShowContentQuestionModal(false)}
+          title="Add Content Questions"
+          size="md"
+        >
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-neutral-700 mb-2">Questions to Add</h3>
+              <div className="space-y-2">
+                {contentQuestions.map((question, index) => (
+                  <div key={index} className="p-2 bg-neutral-50 rounded">
+                    <p><strong>Question {index + 1}:</strong> {question.question_text}</p>
+                    <p><strong>Type:</strong> {question.question_type.replace('_', ' ')}</p>
+                    <p><strong>Options:</strong> {question.options.join(', ')}</p>
+                    <p><strong>Correct Answer:</strong> {question.correct_answer}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowContentQuestionModal(false)}
+                className="btn-outline"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddContentQuestions}
+                className="btn-primary"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? <LoadingSpinner size="sm" /> : 'Add Content Questions'}
               </button>
             </div>
           </div>

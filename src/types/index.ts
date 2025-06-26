@@ -161,13 +161,12 @@ export interface LeaderboardEntry {
   id: number;
   first_name: string;
   last_name: string;
-  profile_picture?: string;
   total_points: number;
-  badges_count: number;
   modules_completed: number;
-  rank: number;
-  quizzes_passed: number;  // Added this
-  quizzes_taken: number; 
+  quizzes_passed: number;
+  quizzes_taken: number;
+  badges_count: number;
+  rank?: number; // optional, since you assign it in the frontend
 }
 
 export interface Certificate {
@@ -204,20 +203,17 @@ export interface DashboardStats {
 }
 
 export interface ProgressSummary {
-  total_modules?: number;
-  completed_modules?: number;
-  completion_percentage?: number;
-  total_points?: number;
-  badges_count?: number;
+  completion_percentage: number;
+  completed_modules: number;
+  total_modules: number;
+  total_points: number;
+  badges_count: number;
   current_streak: number;
-  recent_activity?: Array<{
-    content_id?: number;
-    content_title?: string;
-    module_title?: string;
-    status?: string;
-    last_accessed?: string;
-    score?: number;
-  }>;
+  recent_activity: {
+    content_title: string;
+    module_title: string;
+    status: 'completed' | 'in-progress';
+  }[];
 }
 
 // Re-export all types from api.ts for convenience

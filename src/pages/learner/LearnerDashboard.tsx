@@ -19,7 +19,34 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Badge } from '../../components/ui/Badge';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { AchievementPopup } from '../../components/ui/AchievementPopup';
-import { ProgressSummary, Module, Assignment } from '../../types';
+
+
+export interface ProgressSummary {
+  completion_percentage: number;
+  completed_modules: number;
+  total_modules: number;
+  total_points?: number;  // Made optional since it might not always exist
+  badges_count?: number;   // Made optional since it might not always exist
+  current_streak: number;
+  recent_activity?: {      // Made optional since it might not always exist
+    content_title: string;
+    module_title: string;
+    status: 'completed' | 'in-progress';
+  }[];
+}
+type Module = {
+  id: number;
+  title: string;
+  category: string;
+  completion_percentage: number;
+};
+
+type Assignment = {
+  id: string;
+  module_title: string;
+  due_date?: string;
+  completion_percentage: number;
+};
 
 export const LearnerDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -36,16 +63,35 @@ export const LearnerDashboard: React.FC = () => {
         setIsLoading(true);
 
         // Fetch progress summary
-        const progressData = await apiClient.getProgressSummary();
-        setProgressSummary(progressData);
+        const progressData: ProgressSummary = await apiClient.getProgressSummary();
+        setProgressSummary({
+          total_points: progressData.total_points ?? 0,
+          badges_count: progressData.badges_count ?? 0,
+          completion_percentage: progressData.completion_percentage ?? 0,
+          completed_modules: progressData.completed_modules ?? 0,
+          total_modules: progressData.total_modules ?? 0,
+          current_streak: progressData.current_streak ?? 0,
+          recent_activity: progressData.recent_activity ?? [],
+        });
 
         // Fetch recent modules
         const modulesData = await apiClient.getRecentModules();
-        setRecentModules(modulesData);
+        setRecentModules(
+          modulesData.map((module: any) => ({
+            ...module,
+            completion_percentage: module.completion_percentage ?? 0
+          }))
+        );
 
         // Fetch assignments
         const assignmentsData = await apiClient.getAssignments();
-        setUpcomingAssignments(assignmentsData.slice(0, 3));
+        setUpcomingAssignments(
+          assignmentsData.slice(0, 3).map((assignment: any) => ({
+            ...assignment,
+            id: assignment.id?.toString?.() ?? String(assignment.id),
+            completion_percentage: assignment.completion_percentage ?? 0
+          }))
+        );
 
       } catch (error) {
         showError('Error', 'Failed to load dashboard data');

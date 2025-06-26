@@ -1,4 +1,5 @@
 import { ProgressSummary } from '../types';
+import axios from 'axios';
 
 // api.ts
 // Configuration
@@ -11,6 +12,51 @@ const API_CONFIG = {
     forgotPassword: '/forgot-password',
     resetPassword: '/reset-password',
     logout: '/logout'
+  }
+};
+
+// Configure the base URL for the Flask backend
+const api = axios.create({
+  baseURL: 'http://localhost:5000', // Adjust if your Flask server runs on a different port
+});
+
+// Add interceptor to include the JWT token in all requests
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token'); // Adjust based on where you store the token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  config.headers['Content-Type'] = 'application/json';
+  return config;
+});
+
+// Function to add questions to a content item
+export interface ContentQuestion {
+  question_text: string;
+  question_type: 'multiple_choice' | 'true_false' | 'short_answer';
+  options?: string[];
+  correct_answer?: string;
+  points?: number;
+  explanation?: string;
+  display_order?: number;
+}
+
+export interface AddContentQuestionsResponse {
+  message: string;
+  content_id: number;
+  questions_added: number;
+}
+
+export const addContentQuestions = async (
+  contentId: number,
+  questions: ContentQuestion[]
+): Promise<AddContentQuestionsResponse> => {
+  try {
+    const response = await api.post<AddContentQuestionsResponse>(`/content/${contentId}/questions`, { questions });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error adding questions:', error.response?.data?.message || error.message);
+    throw error;
   }
 };
 

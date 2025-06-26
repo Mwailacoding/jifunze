@@ -1889,6 +1889,7 @@ def generate_report_pdf(report_data, report_type, current_user):
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
             ]))
+           
             elements.append(table)
 
         else:
@@ -2614,174 +2615,84 @@ def award_badge(current_user):
 @app.route('/leaderboard', methods=['GET'])
 @token_required
 def get_leaderboard(current_user):
-    """
-    Get leaderboard data with various filtering and sorting options
-    Parameters:
-    - time_range: Optional (week, month, all) - Default: all
-    - sort_by: Optional (points, modules, quizzes, badges) - Default: points
-    - limit: Optional (number) - Default: 20, Max: 100
-    - include_global: Optional (true/false) - Whether to include global rankings if user has employer
-    """
     try:
-        # Get and validate query parameters
-        time_range = request.args.get('time_range', 'all').lower()
-        sort_by = request.args.get('sort_by', 'points').lower()
-        limit = min(int(request.args.get('limit', 20)), 100)
-        include_global = request.args.get('include_global', 'false').lower() == 'true'
-        
-        # Validate parameters
-        valid_time_ranges = ['week', 'month', 'all']
-        valid_sort_by = ['points', 'modules', 'quizzes', 'badges']
-        
-        if time_range not in valid_time_ranges:
-            return jsonify({'message': f'Invalid time_range. Valid options: {", ".join(valid_time_ranges)}'}), 400
-        if sort_by not in valid_sort_by:
-            return jsonify({'message': f'Invalid sort_by. Valid options: {", ".join(valid_sort_by)}'}), 400
+        # Get query parameters
+        limit = int(request.args.get('limit', 10))
+        period = request.args.get('period', 'all')  # 'all', 'monthly', 'weekly'
 
-        employer_id = current_user.get('employer_id')
-        user_id = current_user['id']
-        
-        # Base query components
-        select_fields = """
+        # Base query for leaderboard
+        query = """
             SELECT 
-                u.id, 
-                u.first_name, 
-                u.last_name, 
-                u.profile_picture,
-                l.total_points, 
-                l.badges_count, 
-                l.modules_completed,
-                l.quizzes_taken, 
-                l.quizzes_passed, 
-                l.avg_quiz_score,
-                e.name as employer_name,
-                RANK() OVER (ORDER BY {} DESC) as global_rank
+                u.id,
+                u.first_name,
+                u.last_name,
+                COALESCE(SUM(up.points), 0) as total_points,
+                COUNT(DISTINCT ub.badge_id) as badge_count,
+                DENSE_RANK() OVER (ORDER BY COALESCE(SUM(up.points), 0) DESC) as rank
+            FROM users u
+            LEFT JOIN user_points up ON u.id = up.user_id
+            LEFT JOIN user_badges ub ON u.id = ub.user_id
         """
         
-        from_clause = """
-            FROM leaderboard l
-            JOIN users u ON l.user_id = u.id
-            LEFT JOIN employers e ON l.employer_id = e.id
+        params = []
+        
+        # Apply time period filter
+        if period == 'monthly':
+            query += " WHERE up.awarded_at >= %s"
+            params.append(datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+        elif period == 'weekly':
+            query += " WHERE up.awarded_at >= %s"
+            params.append(datetime.now(timezone.utc) - timedelta(days=datetime.now(timezone.utc).weekday(), hours=0, minutes=0, seconds=0, microseconds=0))
+            
+        query += """
+            GROUP BY u.id, u.first_name, u.last_name
+            ORDER BY total_points DESC, badge_count DESC
+            LIMIT %s
         """
+        params.append(limit)
         
-        # Time range filter
-        time_filter = ""
-        if time_range != 'all':
-            time_delta = {
-                'week': 'INTERVAL 7 DAY',
-                'month': 'INTERVAL 30 DAY'
-            }[time_range]
-            time_filter = f"WHERE l.last_updated >= NOW() - {time_delta}"
+        leaderboard = execute_query(query, params, fetch_all=True)
         
-        # Sorting logic
-        sort_columns = {
-            'points': 'l.total_points',
-            'modules': 'l.modules_completed',
-            'quizzes': 'l.quizzes_passed',
-            'badges': 'l.badges_count'
-        }
-        order_by = f"ORDER BY {sort_columns[sort_by]} DESC"
-        
-        # Employer-specific leaderboard
-        employer_leaderboard = []
-        if employer_id:
-            query = f"""
-                {select_fields.format(sort_columns[sort_by])}
-                {from_clause}
-                {time_filter}
-                {'AND' if time_filter else 'WHERE'} l.employer_id = %s
-                {order_by}
-                LIMIT %s
+        # Get current user's rank and stats
+        user_stats = execute_query(
             """
-            params = (employer_id, limit)
-            employer_leaderboard = execute_query(query, params, fetch_all=True)
-            
-            # Add employer rank
-            if employer_leaderboard:
-                rank_query = f"""
-                    SELECT user_id, rank FROM (
-                        SELECT 
-                            user_id,
-                            RANK() OVER (ORDER BY {sort_columns[sort_by]} DESC) as rank
-                        FROM leaderboard
-                        WHERE employer_id = %s
-                        {time_filter.replace('l.', '') if time_filter else ''}
-                    ) as ranked
-                    WHERE user_id = %s
-                """
-                user_rank = execute_query(
-                    rank_query,
-                    (employer_id, user_id),
-                    fetch_one=True
-                )
-        
-        # Global leaderboard (either when no employer or include_global=True)
-        global_leaderboard = []
-        if not employer_id or include_global:
-            query = f"""
-                {select_fields.format(sort_columns[sort_by])}
-                {from_clause}
-                {time_filter}
-                {order_by}
-                LIMIT %s
-            """
-            global_leaderboard = execute_query(query, (limit,), fetch_all=True)
-            
-            # Find current user's global rank if not in top results
-            if global_leaderboard and user_id not in [u['id'] for u in global_leaderboard]:
-                rank_query = f"""
-                    SELECT rank FROM (
-                        SELECT 
-                            user_id,
-                            RANK() OVER (ORDER BY {sort_columns[sort_by]} DESC) as rank
-                        FROM leaderboard
-                        {time_filter}
-                    ) as ranked
-                    WHERE user_id = %s
-                """
-                user_global_rank = execute_query(rank_query, (user_id,), fetch_one=True)
-        
-        # Prepare response
-        response = {
-            'time_range': time_range,
-            'sort_by': sort_by,
-            'employer_leaderboard': dict_to_json_serializable(employer_leaderboard),
-            'global_leaderboard': dict_to_json_serializable(global_leaderboard),
-            'user_stats': {}
-        }
-        
-        # Add user ranking information
-        if employer_id:
-            response['user_stats']['employer_rank'] = user_rank.get('rank') if user_rank else None
-        
-        if not employer_id or include_global:
-            response['user_stats']['global_rank'] = user_global_rank.get('rank') if user_global_rank else None
-        
-        # Add current user's stats if not in leaderboards
-        if (employer_id and user_id not in [u['id'] for u in employer_leaderboard]) or \
-           (include_global and user_id not in [u['id'] for u in global_leaderboard]):
-            user_query = f"""
+            SELECT 
+                id,
+                first_name,
+                last_name,
+                total_points,
+                badge_count,
+                rank
+            FROM (
                 SELECT 
-                    l.total_points, 
-                    l.badges_count, 
-                    l.modules_completed,
-                    l.quizzes_taken, 
-                    l.quizzes_passed, 
-                    l.avg_quiz_score
-                FROM leaderboard l
-                WHERE l.user_id = %s
-            """
-            user_stats = execute_query(user_query, (user_id,), fetch_one=True)
-            if user_stats:
-                response['user_stats']['details'] = user_stats
+                    u.id,
+                    u.first_name,
+                    u.last_name,
+                    COALESCE(SUM(up.points), 0) as total_points,
+                    COUNT(DISTINCT ub.badge_id) as badge_count,
+                    DENSE_RANK() OVER (ORDER BY COALESCE(SUM(up.points), 0) DESC) as rank
+                FROM users u
+                LEFT JOIN user_points up ON u.id = up.user_id
+                LEFT JOIN user_badges ub ON u.id = ub.user_id
+                GROUP BY u.id, u.first_name, u.last_name
+            ) ranked
+            WHERE id = %s
+            """,
+            (current_user['id'],),
+            fetch_one=True
+        )
+        print(f"Leaderboard: {leaderboard}")
+        print(f"User Stats: {user_stats}")
         
-        return jsonify(response)
-    
-    except ValueError as e:
-        return jsonify({'message': 'Invalid parameter value', 'error': str(e)}), 400
+        return jsonify({
+            'leaderboard': dict_to_json_serializable(leaderboard),
+            'user_stats': dict_to_json_serializable(user_stats)
+        }), 200
+        
     except Exception as e:
-        app.logger.error(f"Error fetching leaderboard: {str(e)}", exc_info=True)
-        return jsonify({'message': 'Error fetching leaderboard data'}), 500
+        app.logger.error(f"Error fetching leaderboard: {str(e)}")
+        return jsonify({'message': 'Error fetching leaderboard'}), 500
+
 @app.route('/modules', methods=['POST'])
 @token_required
 @trainer_required
@@ -3266,24 +3177,30 @@ def delete_offline_content(current_user, content_id):
             return jsonify({'message': 'Failed to remove content from offline storage'}), 500
     else:
         return jsonify({'message': 'Content not found in offline storage'}), 404
-
 @app.route('/content/<int:content_id>/questions', methods=['POST'])
 @token_required
 @trainer_required
 def add_content_questions(current_user, content_id):
     """Add questions to a specific content item"""
+    
     try:
+        app.logger.info(f"Received request for content_id: {content_id}, user_id: {current_user['id']}")
+        app.logger.info(f"Request JSON: {request.get_json()}")
+
         # Check if request has JSON data
         if not request.is_json:
+            app.logger.error("Request is not JSON")
             return jsonify({'message': 'Request must be JSON'}), 400
 
         data = request.get_json()
         
         # Validate required fields
         if 'questions' not in data:
+            app.logger.error("Missing questions field")
             return jsonify({'message': 'Missing questions field'}), 400
             
         if not isinstance(data['questions'], list):
+            app.logger.error("Questions field is not an array")
             return jsonify({'message': 'Questions must be an array'}), 400
 
         # Verify the trainer owns this content
@@ -3295,26 +3212,31 @@ def add_content_questions(current_user, content_id):
             fetch_one=True
         )
         if not result:
+            app.logger.error(f"Content {content_id} not found or not owned by user {current_user['id']}")
             return jsonify({'message': 'Content not found or unauthorized'}), 404
 
         # Validate each question
         required_question_fields = ['question_text', 'question_type', 'options', 'correct_answer']
         for i, question in enumerate(data['questions']):
             if not isinstance(question, dict):
+                app.logger.error(f"Question at index {i} is not an object")
                 return jsonify({'message': f'Question at index {i} must be an object'}), 400
                 
             missing_fields = [field for field in required_question_fields if field not in question]
             if missing_fields:
+                app.logger.error(f"Question at index {i} missing fields: {missing_fields}")
                 return jsonify({
                     'message': f'Question at index {i} missing required fields: {", ".join(missing_fields)}'
                 }), 400
                 
             if question['question_type'] not in ['multiple_choice', 'true_false', 'short_answer']:
+                app.logger.error(f"Invalid question_type '{question['question_type']}' for question at index {i}")
                 return jsonify({
                     'message': f'Invalid question_type for question at index {i}'
                 }), 400
                 
             if not isinstance(question['options'], list):
+                app.logger.error(f"Options is not an array for question at index {i}")
                 return jsonify({
                     'message': f'Options must be an array for question at index {i}'
                 }), 400
@@ -3333,15 +3255,15 @@ def add_content_questions(current_user, content_id):
                 )
             )
 
+        app.logger.info(f"Successfully added {len(data['questions'])} questions to content_id {content_id}")
         return jsonify({
             'message': f'Successfully added {len(data["questions"])} questions',
             'content_id': content_id
         }), 201
         
     except Exception as e:
-        app.logger.error(f"Error adding questions to content {content_id}: {str(e)}")
+        app.logger.error(f"Error adding questions to content {content_id}: {str(e)}", exc_info=True)
         return jsonify({'message': 'Error adding questions'}), 500
-
 @app.route('/modules/recent', methods=['GET'])
 @token_required
 def get_recent_modules(current_user):

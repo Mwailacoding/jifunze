@@ -9,40 +9,55 @@ function isUserRole(role: string): role is UserRole {
   return ['admin', 'trainer', 'user'].includes(role.toLowerCase());
 }
 
-// Updated validateUser function with role normalization
-function validateUser(user: any): User {
+// Enhanced validateUser function with strict typing and normalization
+function validateUser(user: unknown): User {
   if (!user || typeof user !== 'object') {
     throw new Error('Invalid user data provided');
   }
 
-  // Validate required fields
-  if (!user.id || !user.email || !user.first_name || !user.last_name) {
-    throw new Error('Missing required user fields');
-  }
-  
-  // Normalize role to lowercase and validate
-  const normalizedRole = user.role?.toString().toLowerCase();
-  if (!isUserRole(normalizedRole)) {
-    console.warn(`Invalid user role received: ${user.role}, defaulting to 'user'`);
-    user.role = 'user'; // Default to 'user' if invalid
-  } else {
-    user.role = normalizedRole; // Ensure correct casing
+  const userObj = user as Record<string, unknown>;
+
+  // Validate required fields with proper type checking
+  const requiredFields = ['id', 'email', 'first_name', 'last_name'];
+  for (const field of requiredFields) {
+    if (!userObj[field]) {
+      throw new Error(`Missing required field: ${field}`);
+    }
   }
 
+  // Normalize and validate role
+  let role: UserRole = 'user';
+  if (userObj.role) {
+    const roleStr = String(userObj.role).toLowerCase();
+    if (isUserRole(roleStr)) {
+      role = roleStr;
+    } else {
+      console.warn(`Invalid user role received: ${userObj.role}, defaulting to 'user'`);
+    }
+  }
+
+  // Helper function for optional number fields
+  const getOptionalNumber = (value: unknown): number | undefined => 
+    value !== undefined ? Number(value) : undefined;
+
+  // Helper function for optional string fields
+  const getOptionalString = (value: unknown): string | undefined =>
+    value !== undefined ? String(value) : undefined;
+
   return {
-    id: Number(user.id),
-    email: String(user.email),
-    first_name: String(user.first_name),
-    last_name: String(user.last_name),
-    role: user.role,
-    employer_id: user.employer_id ? Number(user.employer_id) : undefined,
-    department_id: user.department_id ? Number(user.department_id) : undefined,
-    phone: user.phone ? String(user.phone) : undefined,
-    profile_picture: user.profile_picture ? String(user.profile_picture) : undefined,
-    is_active: Boolean(user.is_active ?? true),
-    last_login: user.last_login ? String(user.last_login) : undefined,
-    created_at: user.created_at ? String(user.created_at) : undefined,
-    updated_at: user.updated_at ? String(user.updated_at) : undefined
+    id: Number(userObj.id),
+    email: String(userObj.email),
+    first_name: String(userObj.first_name),
+    last_name: String(userObj.last_name),
+    role,
+    employer_id: getOptionalNumber(userObj.employer_id),
+    department_id: getOptionalNumber(userObj.department_id),
+    phone: getOptionalString(userObj.phone),
+    profile_picture: getOptionalString(userObj.profile_picture),
+    is_active: Boolean(userObj.is_active ?? true),
+    last_login: userObj.last_login ? new Date(String(userObj.last_login)).toISOString() : undefined,
+    created_at: userObj.created_at ? new Date(String(userObj.created_at)).toISOString() : undefined,
+    updated_at: userObj.updated_at ? new Date(String(userObj.updated_at)).toISOString() : undefined
   };
 }
 
@@ -75,17 +90,17 @@ export interface RegisterResult {
   redirectTo?: string;
 }
 
-type RegisterData = {
+interface RegisterData {
   email: string;
   password: string;
   first_name: string;
   last_name: string;
-  role: UserRole | string;
+  role?: UserRole | string;
   employer_id?: number;
   department_id?: number;
   phone?: string;
   profile_picture?: string;
-};
+}
 
 // Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -104,6 +119,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Initialize auth state on mount
   useEffect(() => {
     const initializeAuth = async () => {
+      setIsLoading(true);
       try {
         const token = localStorage.getItem('authToken');
         if (token) {
@@ -115,10 +131,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       } catch (error) {
         console.error('Failed to initialize auth:', error);
-        if (error instanceof Error) {
-          // Don't show initialization errors to users
-          console.warn('Auth initialization failed:', error.message);
-        }
         await logout();
       } finally {
         setIsLoading(false);
@@ -128,12 +140,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     initializeAuth();
   }, []);
 
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+  const clearError = useCallback(() => setError(null), []);
 
   const refreshUser = useCallback(async () => {
-    if (!user) return;
+    if (!isAuthenticated) return;
     
     try {
       const userProfile = await apiClient.getProfile();
@@ -145,7 +155,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         await logout();
       }
     }
-  }, [user]);
+  }, [isAuthenticated]);
 
   const login = useCallback(async (email: string, password: string): Promise<LoginResult> => {
     setIsLoading(true);
@@ -165,9 +175,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(validatedUser);
       setIsAuthenticated(true);
       
-      // Determine redirect path
+      // Determine redirect path based on role
       let redirectTo = '/dashboard';
-      const isAdmin = response.redirect_to_admin || validatedUser.role === 'admin';
+      const isAdmin = validatedUser.role === 'admin';
       
       if (isAdmin) {
         redirectTo = '/admin/dashboard';
@@ -185,7 +195,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Login failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
       setError(errorMessage);
-      throw new Error(errorMessage);
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -199,7 +209,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Normalize role before sending to API
       const normalizedData = {
         ...userData,
-        role: userData.role.toString().toLowerCase()
+        role: userData.role?.toString().toLowerCase() || 'user'
       };
       
       const response = await apiClient.register(normalizedData);
@@ -211,7 +221,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(validatedUser);
       setIsAuthenticated(true);
       
-      // Determine redirect path
+      // Determine redirect path based on role
       let redirectTo = '/dashboard';
       if (validatedUser.role === 'admin') {
         redirectTo = '/admin/dashboard';
@@ -228,7 +238,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Registration failed:', error);
       const errorMessage = error instanceof Error ? error.message : 'Registration failed';
       setError(errorMessage);
-      throw new Error(errorMessage);
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -244,6 +254,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       apiClient.clearToken();
       setUser(null);
       setIsAuthenticated(false);
+      setIsLoading(false);
       clearError();
     }
   }, [clearError]);
@@ -270,12 +281,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Role checking utilities
   const hasRole = useCallback((role: UserRole | UserRole[]): boolean => {
     if (!user) return false;
-    
-    if (Array.isArray(role)) {
-      return role.includes(user.role);
-    }
-    
-    return user.role === role;
+    return Array.isArray(role) ? role.includes(user.role) : user.role === role;
   }, [user]);
 
   const canAccess = useCallback((requiredRole: UserRole): boolean => {
@@ -288,10 +294,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       user: 1
     };
     
-    const userLevel = roleHierarchy[user.role] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
-    
-    return userLevel >= requiredLevel;
+    return (roleHierarchy[user.role] || 0) >= (roleHierarchy[requiredRole] || 0);
   }, [user]);
 
   // Context value
@@ -330,22 +333,39 @@ export const useAuth = (): AuthContextType => {
 export const withAuth = <P extends object>(
   Component: React.ComponentType<P>,
   requiredRole?: UserRole
-) => {
-  return (props: P) => {
+): React.FC<P> => {
+  const WrappedComponent: React.FC<P> = (props) => {
     const { user, isLoading, canAccess } = useAuth();
     
     if (isLoading) {
-      return <div>Loading...</div>;
+      return (
+        <div className="flex justify-center items-center h-64">
+          <span className="text-lg">Loading authentication...</span>
+        </div>
+      );
     }
     
     if (!user) {
-      return <div>Please log in to access this page.</div>;
+      return (
+        <div className="flex justify-center items-center h-64">
+          <span className="text-lg">Please log in to access this page.</span>
+        </div>
+      );
     }
     
     if (requiredRole && !canAccess(requiredRole)) {
-      return <div>You do not have permission to access this page.</div>;
+      return (
+        <div className="flex justify-center items-center h-64">
+          <span className="text-lg text-red-500">
+            You don't have permission to access this page.
+          </span>
+        </div>
+      );
     }
     
     return <Component {...props} />;
   };
+  
+  WrappedComponent.displayName = `withAuth(${Component.displayName || Component.name || 'Component'})`;
+  return WrappedComponent;
 };
