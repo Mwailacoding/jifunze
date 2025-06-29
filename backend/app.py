@@ -247,26 +247,36 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        # Check for token in Authorization header first
+        
+        # Check for token in multiple possible locations
         if 'Authorization' in request.headers:
-            token = request.headers['Authorization'].split(" ")[1]
-        # Fall back to x-access-token
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(" ")[1]
         elif 'x-access-token' in request.headers:
             token = request.headers['x-access-token']
-
+            
         if not token:
+            app.logger.warning('Token is missing in request')
             return jsonify({'message': 'Token is missing!'}), 401
 
         try:
             data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
             current_user = get_user_by_id(data['user_id'])
             if not current_user:
+                app.logger.warning(f'User not found for token: {data["user_id"]}')
                 raise ValueError("User not found")
+        except jwt.ExpiredSignatureError:
+            app.logger.warning('Expired token received')
+            return jsonify({'message': 'Token has expired!'}), 401
+        except jwt.InvalidTokenError:
+            app.logger.warning('Invalid token received')
+            return jsonify({'message': 'Token is invalid!'}), 401
         except Exception as e:
             app.logger.error(f'Token validation failed: {str(e)}')
-            return jsonify({'message': 'Token is invalid!'}), 401
+            return jsonify({'message': 'Token validation failed!'}), 401
 
-        return f(current_user, *args, **kwargs)  # <-- pass as positional argument
+        return f(current_user, *args, **kwargs)
     return decorated
 def admin_required(f):
     @wraps(f)
@@ -280,8 +290,12 @@ def trainer_required(f):
     @wraps(f)
     def decorated(current_user, *args, **kwargs):
         if current_user['role'] not in ['admin', 'trainer']:
-            app.logger.error(f'User {current_user["id"]} attempted to access trainer endpoint without proper role')
-            return jsonify({'message': 'Trainer access required!'}), 403
+            app.logger.warning(f'User {current_user["id"]} attempted trainer access without proper role')
+            return jsonify({
+                'message': 'Trainer access required!',
+                'required_role': 'trainer or admin',
+                'current_role': current_user['role']
+            }), 403
         return f(current_user, *args, **kwargs)
     return decorated
 
@@ -1637,11 +1651,16 @@ def get_progress_summary(current_user):
 def generate_trainer_reports(current_user):
     """Generate various reports for trainers"""
     try:
+        # First log that the endpoint was reached successfully
+        app.logger.info(f"Trainer report requested by user {current_user['id']}")
+        
         report_type = request.args.get('type', 'module_progress') or request.args.get('reportType', 'module_progress')
         module_id = request.args.get('module_id') 
-        time_range = request.args.get('time_range', 'all')  or request.args.get('timeRange', 'all')
-        format = request.args.get('format', 'json') # week, month, quarter, year, all
+        time_range = request.args.get('time_range', 'all') or request.args.get('timeRange', 'all')
         format = request.args.get('format', 'json')  # json or pdf
+
+        # Log the parameters received
+        app.logger.info(f"Report params - type: {report_type}, module_id: {module_id}, time_range: {time_range}, format: {format}")
 
         # Validate time range
         time_ranges = {
@@ -1825,8 +1844,13 @@ def generate_trainer_reports(current_user):
         })
 
     except Exception as e:
-        app.logger.error(f"Error generating report: {str(e)}")
-        return jsonify({'message': 'Error generating report', 'error': str(e)}), 500
+        app.logger.error(f"Error generating report: {str(e)}", exc_info=True)
+        return jsonify({
+            'message': 'Error generating report',
+            'error': str(e),
+            'user_id': current_user.get('id'),
+            'user_role': current_user.get('role')
+        }), 500
 
 def generate_report_pdf(report_data, report_type, current_user):
     """Generate a PDF report from the report data"""
@@ -1912,7 +1936,7 @@ def generate_report_pdf(report_data, report_type, current_user):
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1,  0), 'Helvetica-Bold'),  # <-- fixed line
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), 10),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
