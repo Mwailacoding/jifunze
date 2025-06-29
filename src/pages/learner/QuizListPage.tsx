@@ -14,7 +14,7 @@ import {
 import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
-import { apiClient, Quiz, } from '../../utils/api';
+import { apiClient, Quiz } from '../../utils/api';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
@@ -125,7 +125,6 @@ export const QuizListPage: React.FC = () => {
 
   return (
     <Layout>
-      {/* Header */}
       <div className="mb-8">
         <button
           onClick={() => navigate(-1)}
@@ -161,7 +160,6 @@ export const QuizListPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Progress Summary */}
         <div className="mt-6 card p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-neutral-900">Your Progress</h3>
@@ -192,7 +190,6 @@ export const QuizListPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Quiz List */}
       <div className="space-y-6">
         {totalQuizzes === 0 ? (
           <div className="card p-8 text-center">
@@ -206,7 +203,11 @@ export const QuizListPage: React.FC = () => {
           </div>
         ) : (
           quizzes.map((quiz) => (
-            <div key={quiz.id} className="card p-6 hover:shadow-md transition-shadow">
+            <div 
+              key={quiz.id} 
+              className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => handleStartQuiz(quiz)}
+            >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-3">
@@ -248,7 +249,6 @@ export const QuizListPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Quiz Result Summary */}
                   {quiz.user_result && (
                     <div className="bg-neutral-50 rounded-lg p-4 mb-4">
                       <div className="flex items-center justify-between mb-2">
@@ -271,18 +271,6 @@ export const QuizListPage: React.FC = () => {
                 </div>
 
                 <div className="ml-6 flex flex-col items-end space-y-3">
-                  <button
-                    onClick={() => handleStartQuiz(quiz)}
-                    className={`btn-primary flex items-center space-x-2 ${
-                      quiz.user_result?.passed ? 'bg-green-600 hover:bg-green-700' : ''
-                    }`}
-                  >
-                    <PlayCircle className="w-4 h-4" />
-                    <span>
-                      {quiz.user_result ? 'Retake Quiz' : 'Start Quiz'}
-                    </span>
-                  </button>
-
                   {quiz.user_result?.passed && (
                     <div className="flex items-center space-x-2 text-green-600">
                       <Trophy className="w-4 h-4" />
@@ -296,7 +284,6 @@ export const QuizListPage: React.FC = () => {
         )}
       </div>
 
-      {/* Quiz Tips */}
       <div className="mt-8 card p-6 bg-primary-50 border-primary-200">
         <h3 className="text-lg font-semibold text-primary-900 mb-3">Quiz Tips</h3>
         <ul className="space-y-2 text-primary-800">

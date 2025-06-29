@@ -262,12 +262,11 @@ def token_required(f):
             current_user = get_user_by_id(data['user_id'])
             if not current_user:
                 raise ValueError("User not found")
-            kwargs['current_user'] = current_user
         except Exception as e:
             app.logger.error(f'Token validation failed: {str(e)}')
             return jsonify({'message': 'Token is invalid!'}), 401
 
-        return f(*args, **kwargs)
+        return f(current_user, *args, **kwargs)  # <-- pass as positional argument
     return decorated
 def admin_required(f):
     @wraps(f)
@@ -1263,83 +1262,84 @@ def get_module(current_user, module_id):
     module['contents'] = contents
     return jsonify(dict_to_json_serializable(module))
 
-@app.route('/content/<int:content_id>/download', methods=['POST'])
+@app.route('/content/<int:content_id>/questions', methods=['POST'])
 @token_required
-def download_content(current_user, content_id):
-    content = execute_query(
-        "SELECT * FROM module_content WHERE id = %s",
-        (content_id,),
-        fetch_one=True
-    )
-    if not content:
-        return jsonify({'message': 'Content not found'}), 404
-
-    if not content['is_downloadable']:
-        return jsonify({'message': 'Content is not available for offline download'}), 403
-
-    current_size = calculate_offline_size(current_user['id'])
-    if current_size >= app.config['MAX_OFFLINE_CONTENT_SIZE']:
-        return jsonify({'message': 'You have reached your offline storage limit'}), 403
-
-    user_offline_dir = os.path.join(app.config['OFFLINE_CONTENT_DIR'], str(current_user['id']))
-    os.makedirs(user_offline_dir, exist_ok=True)
-
-    content_path = os.path.join(user_offline_dir, str(content_id))
-
+@trainer_required
+def add_content_question(current_user, content_id):
+    """Add a question to a specific content item"""
+    
     try:
-        if content['content_type'] == 'video' and content.get('url'):
-            youtube_video = execute_query(
-                "SELECT * FROM youtube_videos WHERE content_id = %s",
-                (content_id,),
-                fetch_one=True
+        app.logger.info(f"Received request for content_id: {content_id}, user_id: {current_user['id']}")
+        app.logger.info(f"Request JSON: {request.get_json()}")
+
+        # Check if request has JSON data
+        if not request.is_json:
+            app.logger.error("Request is not JSON")
+            return jsonify({'message': 'Request must be JSON'}), 400
+
+        question = request.get_json()
+        
+        # Validate that we received a single question object
+        if not isinstance(question, dict):
+            app.logger.error("Request body is not a question object")
+            return jsonify({'message': 'Request body must be a single question object'}), 400
+
+        # Verify the trainer owns this content
+        result = execute_query(
+            "SELECT 1 FROM module_content mc "
+            "JOIN modules m ON mc.module_id = m.id "
+            "WHERE mc.id = %s AND m.created_by = %s",
+            (content_id, current_user['id']),
+            fetch_one=True
+        )
+        if not result:
+            app.logger.error(f"Content {content_id} not found or not owned by user {current_user['id']}")
+            return jsonify({'message': 'Content not found or unauthorized'}), 404
+
+        # Validate question fields
+        required_fields = ['question_text', 'question_type', 'options', 'correct_answer']
+        missing_fields = [field for field in required_fields if field not in question]
+        if missing_fields:
+            app.logger.error(f"Question missing fields: {missing_fields}")
+            return jsonify({
+                'message': f'Question missing required fields: {", ".join(missing_fields)}'
+            }), 400
+            
+        if question['question_type'] not in ['multiple_choice', 'true_false', 'short_answer']:
+            app.logger.error(f"Invalid question_type '{question['question_type']}'")
+            return jsonify({
+                'message': 'Invalid question_type'
+            }), 400
+            
+        if not isinstance(question['options'], list):
+            app.logger.error("Options is not an array")
+            return jsonify({
+                'message': 'Options must be an array'
+            }), 400
+
+        # Add question to the content
+        execute_query(
+            "INSERT INTO content_questions (content_id, question_text, question_type, options, correct_answer, points) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (
+                content_id, 
+                question['question_text'], 
+                question['question_type'],
+                json.dumps(question['options']), 
+                question['correct_answer'],
+                question.get('points', 1)
             )
+        )
 
-            if youtube_video:
-                offline_content = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>{content['title']}</title>
-                </head>
-                <body>
-                    <h1>{content['title']}</h1>
-                    <p>{content.get('description', '')}</p>
-                    <div>
-                        <p>Note: This video requires internet connection to play.</p>
-                        <p>Original YouTube URL: {youtube_video['youtube_video_id']}</p>
-                    </div>
-                </body>
-                </html>
-                """
-
-                with open(content_path, 'w') as f:
-                    f.write(offline_content)
-        elif content['content_type'] == 'document' and content.get('url'):
-            response = requests.get(content['url'], stream=True)
-            if response.status_code == 200:
-                with open(content_path, 'wb') as f:
-                    for chunk in response.iter_content(1024):
-                        f.write(chunk)
-            else:
-                raise Exception("Failed to download document")
-        elif content['content_type'] == 'html' and content.get('url'):
-            response = requests.get(content['url'])
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                with open(content_path, 'w') as f:
-                    f.write(str(soup))
-            else:
-                raise Exception("Failed to download HTML content")
-        else:
-            return jsonify({'message': 'Content type not supported for offline download'}), 400
-
-        return jsonify({'message': 'Content downloaded for offline access'})
+        app.logger.info(f"Successfully added question to content_id {content_id}")
+        return jsonify({
+            'message': 'Successfully added question',
+            'content_id': content_id
+        }), 201
+        
     except Exception as e:
-        app.logger.error(f"Failed to download content {content_id}: {str(e)}")
-        if os.path.exists(content_path):
-            os.remove(content_path)
-        return jsonify({'message': 'Failed to download content for offline access'}), 500
-
+        app.logger.error(f"Error adding question to content {content_id}: {str(e)}", exc_info=True)
+        return jsonify({'message': 'Error adding question'}), 500
 @app.route('/user/certificates/preview/<string:cert_type>/<int:item_id>', methods=['GET'])
 @token_required
 def preview_certificate(current_user, cert_type, item_id):
@@ -1637,9 +1637,10 @@ def get_progress_summary(current_user):
 def generate_trainer_reports(current_user):
     """Generate various reports for trainers"""
     try:
-        report_type = request.args.get('type', 'module_progress')
-        module_id = request.args.get('module_id')
-        time_range = request.args.get('time_range', 'all')  # week, month, quarter, year, all
+        report_type = request.args.get('type', 'module_progress') or request.args.get('reportType', 'module_progress')
+        module_id = request.args.get('module_id') 
+        time_range = request.args.get('time_range', 'all')  or request.args.get('timeRange', 'all')
+        format = request.args.get('format', 'json') # week, month, quarter, year, all
         format = request.args.get('format', 'json')  # json or pdf
 
         # Validate time range
@@ -2177,6 +2178,7 @@ def get_quiz_questions(current_user, quiz_id):
 @trainer_required
 def add_quiz_question(current_user, quiz_id):
     """Add a new question to a quiz"""
+
     try:
         data = request.get_json()
         required_fields = ['question_text', 'question_type', 'options', 'correct_answer']
@@ -2213,9 +2215,9 @@ def add_quiz_question(current_user, quiz_id):
             "options, correct_answer, points) "
             "VALUES (%s, %s, %s, %s, %s, %s)",
             (
-                quiz_id, data['question_text'], data['question_type'],
-                json.dumps(data['options']), data['correct_answer'],
-                data.get('points', 1)
+                quiz_id, question['question_text'], question['question_type'],
+                json.dumps(question['options']), question['correct_answer'],
+                question.get('points', 1)
             ),
             lastrowid=True
         )
@@ -2883,6 +2885,46 @@ def get_module_quizzes(current_user, module_id):
 
     return jsonify(dict_to_json_serializable(quizzes))
 
+@app.route('/content/<int:content_id>/quiz', methods=['GET'])
+@token_required
+def get_content_quiz(current_user, content_id):
+    """Get quiz for a specific content item through its module"""
+    try:
+        # Get the module this content belongs to
+        content = execute_query(
+            "SELECT module_id FROM module_content WHERE id = %s",
+            (content_id,),
+            fetch_one=True
+        )
+        if not content:
+            return jsonify({'message': 'Content not found'}), 404
+
+        # Get quiz for this module
+        quiz = execute_query(
+            "SELECT * FROM quizzes WHERE module_id = %s AND is_active = TRUE LIMIT 1",
+            (content['module_id'],),
+            fetch_one=True
+        )
+
+        if not quiz:
+            return jsonify({'message': 'No quiz available for this content'}), 404
+
+        # Get questions for this quiz (without correct answers)
+        questions = execute_query(
+            "SELECT id, question_text, options, points "
+            "FROM quiz_questions WHERE quiz_id = %s",
+            (quiz['id'],),
+            fetch_all=True
+        )
+
+        quiz['questions'] = questions
+
+        return jsonify(dict_to_json_serializable(quiz))
+
+    except Exception as e:
+        app.logger.error(f"Error fetching content quiz: {str(e)}")
+        return jsonify({'message': 'Error fetching quiz'}), 500
+
 @app.route('/quizzes/<int:quiz_id>', methods=['GET'])
 @token_required
 def get_quiz(current_user, quiz_id):
@@ -2896,7 +2938,7 @@ def get_quiz(current_user, quiz_id):
         return jsonify({'message': 'Quiz not found'}), 404
 
     questions = execute_query(
-        "SELECT id, question_text, question_type, options, points "
+        "SELECT id, question_text, options, points "
         "FROM quiz_questions WHERE quiz_id = %s",
         (quiz_id,),
         fetch_all=True
@@ -3123,7 +3165,6 @@ def get_dashboard_stats(current_user):
     stats['recent_activity'] = dict_to_json_serializable(recent_activity)
 
     return jsonify(stats)
-
 @app.route('/offline-content', methods=['GET'])
 @token_required
 def get_offline_content(current_user):
@@ -3177,93 +3218,6 @@ def delete_offline_content(current_user, content_id):
             return jsonify({'message': 'Failed to remove content from offline storage'}), 500
     else:
         return jsonify({'message': 'Content not found in offline storage'}), 404
-@app.route('/content/<int:content_id>/questions', methods=['POST'])
-@token_required
-@trainer_required
-def add_content_questions(current_user, content_id):
-    """Add questions to a specific content item"""
-    
-    try:
-        app.logger.info(f"Received request for content_id: {content_id}, user_id: {current_user['id']}")
-        app.logger.info(f"Request JSON: {request.get_json()}")
-
-        # Check if request has JSON data
-        if not request.is_json:
-            app.logger.error("Request is not JSON")
-            return jsonify({'message': 'Request must be JSON'}), 400
-
-        data = request.get_json()
-        
-        # Validate required fields
-        if 'questions' not in data:
-            app.logger.error("Missing questions field")
-            return jsonify({'message': 'Missing questions field'}), 400
-            
-        if not isinstance(data['questions'], list):
-            app.logger.error("Questions field is not an array")
-            return jsonify({'message': 'Questions must be an array'}), 400
-
-        # Verify the trainer owns this content
-        result = execute_query(
-            "SELECT 1 FROM module_content mc "
-            "JOIN modules m ON mc.module_id = m.id "
-            "WHERE mc.id = %s AND m.created_by = %s",
-            (content_id, current_user['id']),
-            fetch_one=True
-        )
-        if not result:
-            app.logger.error(f"Content {content_id} not found or not owned by user {current_user['id']}")
-            return jsonify({'message': 'Content not found or unauthorized'}), 404
-
-        # Validate each question
-        required_question_fields = ['question_text', 'question_type', 'options', 'correct_answer']
-        for i, question in enumerate(data['questions']):
-            if not isinstance(question, dict):
-                app.logger.error(f"Question at index {i} is not an object")
-                return jsonify({'message': f'Question at index {i} must be an object'}), 400
-                
-            missing_fields = [field for field in required_question_fields if field not in question]
-            if missing_fields:
-                app.logger.error(f"Question at index {i} missing fields: {missing_fields}")
-                return jsonify({
-                    'message': f'Question at index {i} missing required fields: {", ".join(missing_fields)}'
-                }), 400
-                
-            if question['question_type'] not in ['multiple_choice', 'true_false', 'short_answer']:
-                app.logger.error(f"Invalid question_type '{question['question_type']}' for question at index {i}")
-                return jsonify({
-                    'message': f'Invalid question_type for question at index {i}'
-                }), 400
-                
-            if not isinstance(question['options'], list):
-                app.logger.error(f"Options is not an array for question at index {i}")
-                return jsonify({
-                    'message': f'Options must be an array for question at index {i}'
-                }), 400
-
-        # Add questions to the content
-        for question in data['questions']:
-            execute_query(
-                "INSERT INTO content_questions (content_id, question_text, question_type, options, correct_answer) "
-                "VALUES (%s, %s, %s, %s, %s)",
-                (
-                    content_id, 
-                    question['question_text'], 
-                    question['question_type'],
-                    json.dumps(question['options']), 
-                    question['correct_answer']
-                )
-            )
-
-        app.logger.info(f"Successfully added {len(data['questions'])} questions to content_id {content_id}")
-        return jsonify({
-            'message': f'Successfully added {len(data["questions"])} questions',
-            'content_id': content_id
-        }), 201
-        
-    except Exception as e:
-        app.logger.error(f"Error adding questions to content {content_id}: {str(e)}", exc_info=True)
-        return jsonify({'message': 'Error adding questions'}), 500
 @app.route('/modules/recent', methods=['GET'])
 @token_required
 def get_recent_modules(current_user):

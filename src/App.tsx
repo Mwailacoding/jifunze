@@ -53,6 +53,7 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginForm />} />
               <Route path="/register" element={<RegisterForm />} />
+              <Route path="/quiz/:quizId" element={<QuizPage />} />
 
               {/* Protected routes */}
               <Route path="/dashboard" element={
@@ -106,6 +107,11 @@ function App() {
                   <OfflineContentPage />
                 </ProtectedRoute>
               } />
+
+               <Route 
+          path="/quiz/:contentId" 
+          element={<QuizPage />} 
+        />
 
               {/* Trainer routes */}
               <Route path="/trainer/dashboard" element={

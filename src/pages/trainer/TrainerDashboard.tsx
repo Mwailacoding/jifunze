@@ -23,6 +23,9 @@ export const TrainerDashboard: React.FC = () => {
   const { user } = useAuth();
   const { showError } = useNotification();
   const [dashboardData, setDashboardData] = useState<TrainerDashboardType>({
+    total_modules: 0,
+    active_modules: 0,
+    total_learners: 0,
     recent_modules: [],
     assignment_stats: [],
     recent_quiz_results: []
@@ -32,20 +35,25 @@ export const TrainerDashboard: React.FC = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        setIsLoading(true);
         const data = await apiClient.getTrainerDashboard();
         setDashboardData(data || {
+          total_modules: 0,
+          active_modules: 0,
+          total_learners: 0,
           recent_modules: [],
           assignment_stats: [],
           recent_quiz_results: []
         });
       } catch (error) {
-        showError('Error', 'Failed to load dashboard data');
         setDashboardData({
+          total_modules: 0,
+          active_modules: 0,
+          total_learners: 0,
           recent_modules: [],
           assignment_stats: [],
           recent_quiz_results: []
         });
+        showError('Error', 'Failed to load dashboard data');
       } finally {
         setIsLoading(false);
       }

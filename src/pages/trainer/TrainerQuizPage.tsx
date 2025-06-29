@@ -64,7 +64,6 @@ export const TrainerQuizPage: React.FC = () => {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // State for assignment data (for quiz assignment modal)
   const [assignmentData, setAssignmentData] = useState<AssignmentData>({
     assignment_type: 'all',
     individual_id: '',
@@ -75,7 +74,6 @@ export const TrainerQuizPage: React.FC = () => {
     notes: ''
   });
   
-  // Form states for adding questions
   const [newQuestion, setNewQuestion] = useState({
     question_text: '',
     question_type: 'multiple_choice' as 'multiple_choice' | 'true_false' | 'short_answer',
@@ -84,25 +82,8 @@ export const TrainerQuizPage: React.FC = () => {
     points: 1
   });
 
-  // State for content questions (for /content/<content_id>/questions endpoint)
-  const [contentQuestions, setContentQuestions] = useState([
-    {
-      question_text: 'What is the capital of France?',
-      question_type: 'multiple_choice' as 'multiple_choice' | 'true_false' | 'short_answer',
-      options: ['Paris', 'London', 'Berlin', 'Madrid'],
-      correct_answer: 'Paris',
-    },
-    {
-      question_text: 'Is the sky blue?',
-      question_type: 'true_false',
-      options: ['True', 'False'],
-      correct_answer: 'True',
-    },
-  ]);
-
   const [showContentQuestionModal, setShowContentQuestionModal] = useState(false);
 
-  // Load quizzes for this module
   useEffect(() => {
     const fetchQuizzes = async () => {
       if (!moduleId) return;
@@ -121,7 +102,6 @@ export const TrainerQuizPage: React.FC = () => {
     fetchQuizzes();
   }, [moduleId, showError]);
 
-  // Load questions for selected quiz
   useEffect(() => {
     const fetchQuestions = async () => {
       if (!selectedQuiz) return;
@@ -186,14 +166,22 @@ export const TrainerQuizPage: React.FC = () => {
     }
   };
 
-  // New function to add content questions to /content/<content_id>/questions
   const handleAddContentQuestions = async () => {
-    const contentId = 28; // Replace with dynamic contentId if needed
+    const contentId = 35;
     try {
       setIsSubmitting(true);
-      console.log('Sending content questions payload:', JSON.stringify({ questions: contentQuestions }, null, 2));
-      const response = await apiClient.post(`/content/${contentId}/questions`, { questions: contentQuestions });
-      showSuccess('Success', 'Content questions added successfully: ' + JSON.stringify(response));
+      
+      const payload = {
+        question_text: "is safety a priority",
+        question_type: "true_false",
+        options: ["True", "False"],
+        correct_answer: "True",
+        points: 1
+      };
+
+      console.log('Sending content question payload:', JSON.stringify(payload, null, 2));
+      const response = await apiClient.post(`/content/${contentId}/questions`, payload);
+      showSuccess('Success', 'Content question added successfully');
       setShowContentQuestionModal(false);
     } catch (error) {
       let errorMessage = 'Unknown error';
@@ -201,7 +189,7 @@ export const TrainerQuizPage: React.FC = () => {
         const err = error as { response?: { data?: { message?: string } } };
         errorMessage = err.response?.data?.message || 'Unknown error';
       }
-      showError('Error', 'Failed to add content questions: ' + errorMessage);
+      showError('Error', 'Failed to add content question: ' + errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -296,7 +284,6 @@ export const TrainerQuizPage: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Quiz List */}
           <div className="lg:col-span-1">
             <div className="card p-4">
               <h3 className="font-semibold text-neutral-900 mb-4">Quizzes</h3>
@@ -346,7 +333,6 @@ export const TrainerQuizPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Quiz Details */}
           <div className="lg:col-span-2">
             {selectedQuiz ? (
               <div className="card p-6">
@@ -476,7 +462,6 @@ export const TrainerQuizPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Add Question Modal (for quiz questions) */}
         <Modal
           isOpen={showQuestionModal}
           onClose={() => setShowQuestionModal(false)}
@@ -638,25 +623,24 @@ export const TrainerQuizPage: React.FC = () => {
           </div>
         </Modal>
 
-        {/* Add Content Questions Modal */}
         <Modal
           isOpen={showContentQuestionModal}
           onClose={() => setShowContentQuestionModal(false)}
-          title="Add Content Questions"
+          title="Add Content Question"
           size="md"
         >
           <div className="space-y-4">
             <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-2">Questions to Add</h3>
-              <div className="space-y-2">
-                {contentQuestions.map((question, index) => (
-                  <div key={index} className="p-2 bg-neutral-50 rounded">
-                    <p><strong>Question {index + 1}:</strong> {question.question_text}</p>
-                    <p><strong>Type:</strong> {question.question_type.replace('_', ' ')}</p>
-                    <p><strong>Options:</strong> {question.options.join(', ')}</p>
-                    <p><strong>Correct Answer:</strong> {question.correct_answer}</p>
-                  </div>
-                ))}
+              <h3 className="text-sm font-medium text-neutral-700 mb-2">Question to Add</h3>
+              <div className="p-4 bg-neutral-50 rounded">
+                <p className="font-medium">Question:</p>
+                <p className="mb-2">"is safety a priority"</p>
+                <p className="font-medium">Type:</p>
+                <p className="mb-2">true_false</p>
+                <p className="font-medium">Options:</p>
+                <p className="mb-2">True, False</p>
+                <p className="font-medium">Correct Answer:</p>
+                <p>True</p>
               </div>
             </div>
             <div className="flex justify-end space-x-3 pt-4">
@@ -673,13 +657,12 @@ export const TrainerQuizPage: React.FC = () => {
                 className="btn-primary"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? <LoadingSpinner size="sm" /> : 'Add Content Questions'}
+                {isSubmitting ? <LoadingSpinner size="sm" /> : 'Add Content Question'}
               </button>
             </div>
           </div>
         </Modal>
 
-        {/* Assign Quiz Modal */}
         <Modal
           isOpen={showAssignModal}
           onClose={() => setShowAssignModal(false)}
@@ -737,7 +720,6 @@ export const TrainerQuizPage: React.FC = () => {
                   className="w-full p-2 border border-neutral-300 rounded focus:ring focus:ring-primary-200 focus:border-primary-500"
                 >
                   <option value="">Select department</option>
-                  {/* Departments would be populated from API */}
                 </select>
               </div>
             )}

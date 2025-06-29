@@ -333,10 +333,22 @@ class ApiClient {
     resolve: (value: any) => void;
     reject: (error: any) => void;
   }> = [];
+  private axios = axios.create({
+    baseURL: API_CONFIG.BASE_URL,
+    timeout: API_CONFIG.DEFAULT_TIMEOUT,
+  });
 
   constructor() {
     this.token = localStorage.getItem('authToken');
     this.refreshToken = localStorage.getItem('refreshToken');
+
+    // Add request interceptor
+    this.axios.interceptors.request.use((config) => {
+      if (this.token) {
+        config.headers.Authorization = `Bearer ${this.token}`;
+      }
+      return config;
+    });
   }
 
   setToken(token: string, refreshToken?: string) {
@@ -635,6 +647,12 @@ class ApiClient {
     });
   }
 
+  // Content Quiz endpoint
+  async getContentQuiz(contentId: number): Promise<any> {
+    const response = await this.axios.get(`/content/${contentId}/quiz`);
+    return response.data;
+  }
+
   // Assignment endpoints
   async getAssignments(): Promise<Assignment[]> {
     return this.request<Assignment[]>('/assignments');
@@ -765,6 +783,36 @@ class ApiClient {
       console.warn('Trainer modules endpoint not available');
       return [];
     }
+  }
+
+  async getTrainerReports(
+    reportType: string,
+    moduleId?: number,
+    timeRange?: string,
+    format?: 'json' | 'pdf'
+  ): Promise<any> {
+    // Replace with your actual API endpoint and logic
+    const params = new URLSearchParams();
+    params.append('reportType', reportType);
+    if (moduleId !== undefined) params.append('moduleId', moduleId.toString());
+    if (timeRange) params.append('timeRange', timeRange);
+    if (format) params.append('format', format);
+
+    const response = await fetch(`/api/trainer/reports?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        Accept: format === 'pdf' ? 'application/pdf' : 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch report');
+    }
+
+    if (format === 'pdf') {
+      return await response.arrayBuffer();
+    }
+    return await response.json();
   }
 
   async getTrainerLearners(): Promise<User[]> {

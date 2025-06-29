@@ -202,19 +202,19 @@ const TestimonialCard = () => {
     {
       rating: "4.9/5",
       quote: "This platform transformed how our team approaches professional development. The gamification elements keep everyone engaged!",
-      author: "Sarah Johnson, HR Director",
+      author: "Ivy Malika, HR Director",
       avatar: "https://randomuser.me/api/portraits/women/44.jpg"
     },
     {
       rating: "4.7/5",
       quote: "The quality of content is exceptional. I've completed 3 certifications and each one has directly helped my career advancement.",
-      author: "Michael Chen, Software Engineer",
+      author: "Shalom Maliak, Software Engineer",
       avatar: "https://randomuser.me/api/portraits/men/32.jpg"
     },
     {
       rating: "5/5",
       quote: "As a busy professional, the mobile access and bite-sized lessons make it possible to learn during my commute. Highly recommend!",
-      author: "Amina Diallo, Marketing Manager",
+      author: "Mitchelle Malika, Marketing Manager",
       avatar: "https://randomuser.me/api/portraits/women/63.jpg"
     }
   ];
@@ -622,8 +622,7 @@ const HeroSection = () => {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <Play className="w-5 h-5" />
-                <span>Watch Demo</span>
+                
               </motion.button>
             </motion.div>
           </motion.div>
@@ -744,9 +743,7 @@ const StatsSection = () => {
     { number: '500+', label: 'Training Modules', icon: Bookmark },
     { number: '95%', label: 'Success Rate', icon: CheckCircle },
     { number: '24/7', label: 'Access', icon: Clock },
-    { number: '50+', label: 'Countries', icon: Globe },
     { number: '99.9%', label: 'Uptime', icon: Shield },
-    { number: '1M+', label: 'Downloads', icon: Download },
     { number: '10K+', label: 'Certificates', icon: Award }
   ];
 
@@ -850,11 +847,9 @@ export const LandingPage: React.FC = () => {
               <div className="space-y-4">
                 {[
                   'Personalized learning paths tailored to your goals',
-                  'Industry-recognized certifications upon completion',
                   'Expert-led content from seasoned professionals',
                   'Mobile-friendly design for learning on-the-go',
                   'Comprehensive progress tracking and analytics',
-                  'Peer collaboration and networking opportunities',
                   'Offline access to course materials',
                   'Regular content updates and new courses'
                 ].map((benefit, index) => (
@@ -906,13 +901,9 @@ export const LandingPage: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {[
               { icon: Code, name: 'React', description: 'Frontend framework for interactive UIs' },
-              { icon: Database, name: 'Node.js', description: 'Scalable backend technology' },
-              { icon: Cloud, name: 'AWS', description: 'Reliable cloud infrastructure' },
-              { icon: Headphones, name: 'WebRTC', description: 'Real-time communication' },
+              { icon: Database, name: 'Flask', description: 'Scalable backend technology' },
               { icon: Zap, name: 'GraphQL', description: 'Efficient data fetching' },
               { icon: Shield, name: 'OAuth 2.0', description: 'Secure authentication' },
-              { icon: TrendingUp, name: 'Redis', description: 'High-performance caching' },
-              { icon: BookOpen, name: 'Three.js', description: '3D visualizations' }
             ].map((tech, index) => (
               <motion.div
                 key={index}
