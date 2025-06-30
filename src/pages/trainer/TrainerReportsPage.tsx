@@ -342,8 +342,8 @@ export const TrainerReportsPage: React.FC = () => {
                           question.correct_rate > 0.7
                             ? 'secondary'
                             : question.correct_rate > 0.5
-                            ? 'accent' // Map "yellow" to "accent"
-                            : 'primary' // Map "red" to "primary"
+                            ? 'accent'
+                            : 'primary'
                         }
                       />
                     </div>
@@ -390,17 +390,17 @@ export const TrainerReportsPage: React.FC = () => {
                   </div>
                 </div>
                 <ProgressBar
-                value={module.completion_rate}
-                size="sm"
-                className="w-full"
-                color={
-                module.completion_rate > 70
-               ? 'secondary' // Map "green" to "secondary"
-               : module.completion_rate > 40
-               ? 'accent' // Map "yellow" to "accent"
-               : 'primary' // Map "red" to "primary"
-  }
-/>
+                  value={module.completion_rate}
+                  size="sm"
+                  className="w-full"
+                  color={
+                    module.completion_rate > 70
+                      ? 'secondary'
+                      : module.completion_rate > 40
+                      ? 'accent'
+                      : 'primary'
+                  }
+                />
               </div>
             ))}
           </div>
