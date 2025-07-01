@@ -9,7 +9,8 @@ import {
   CheckCircle2,
   Star,
   Users,
-  ChevronDown
+  ChevronDown,
+  Award
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -17,9 +18,12 @@ import { apiClient } from '../../utils/api';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Module } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+import { CertificateBadge } from '../../components/certificates/CertificateBadge';
 
 export const ModulesPage: React.FC = () => {
   const { showError } = useNotification();
+  const { currentUser } = useAuth();
   const [modules, setModules] = useState<Module[]>([]);
   const [filteredModules, setFilteredModules] = useState<Module[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,23 +31,36 @@ export const ModulesPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [certificates, setCertificates] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
-    const fetchModules = async () => {
+    const fetchData = async () => {
       try {
         setIsLoading(true);
-        const data = await apiClient.getModules();
-        setModules(data);
-        setFilteredModules(data);
+        const [modulesData, certificatesData] = await Promise.all([
+          apiClient.getModules(),
+          apiClient.getUserCertificates(currentUser.id)
+        ]);
+        
+        setModules(modulesData);
+        setFilteredModules(modulesData);
+        
+        // Create a map of module IDs to certificate status
+        const certMap = certificatesData.reduce((acc, cert) => {
+          acc[cert.module_id] = true;
+          return acc;
+        }, {} as Record<number, boolean>);
+        
+        setCertificates(certMap);
       } catch (error) {
-        showError('Error', 'Failed to load modules');
+        showError('Error', 'Failed to load data');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchModules();
-  }, [showError]);
+    fetchData();
+  }, [currentUser.id, showError]);
 
   useEffect(() => {
     let filtered = modules;
@@ -92,6 +109,13 @@ export const ModulesPage: React.FC = () => {
     return 'secondary';
   };
 
+  const getModuleStatus = (module: Module): 'certified' | 'completed' | 'in-progress' | 'not-started' => {
+      if (module.completion_percentage === 100) {
+        return certificates[module.id] ? 'certified' : 'completed';
+      }
+      return module.completion_percentage > 0 ? 'in-progress' : 'not-started';
+  };
+
   if (isLoading) {
     return (
       <Layout>
@@ -108,7 +132,7 @@ export const ModulesPage: React.FC = () => {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-neutral-900 mb-2">Training Modules</h1>
         <p className="text-neutral-600">
-          Explore our comprehensive library of training modules designed to enhance your skills.
+          Complete all content and pass the quiz to earn certificates for each module.
         </p>
       </div>
 
@@ -185,100 +209,174 @@ export const ModulesPage: React.FC = () => {
       </div>
 
       {/* Results Summary */}
-      <div className="mb-6">
+      <div className="mb-6 flex justify-between items-center">
         <p className="text-neutral-600">
           Showing {filteredModules.length} of {modules.length} modules
         </p>
+        <div className="flex items-center space-x-2 text-sm text-neutral-600">
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 rounded-full bg-primary-500"></div>
+            <span>Completed with certificate</span>
+          </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 rounded-full bg-accent-500"></div>
+            <span>In progress</span>
+          </div>
+        </div>
       </div>
 
       {/* Modules Grid */}
       {filteredModules.length > 0 ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredModules.map((module) => (
-            <div key={module.id} className="card card-hover overflow-hidden">
-              {/* Module Header */}
-              <div className="p-6 pb-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-lg flex items-center justify-center">
-                      <BookOpen className="w-5 h-5 text-white" />
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${getDifficultyColor(module.difficulty_level)}`}>
-                      {module.difficulty_level}
-                    </span>
+          {filteredModules.map((module) => {
+            const status = getModuleStatus(module);
+            const hasCertificate = certificates[module.id];
+            
+            return (
+              <div key={module.id} className="card card-hover overflow-hidden relative">
+                {/* Certificate Badge */}
+                {hasCertificate && (
+                  <div className="absolute top-4 right-4 z-10">
+                    <CertificateBadge />
                   </div>
-                  {module.completion_percentage === 100 && (
-                    <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                      <CheckCircle2 className="w-5 h-5 text-primary-600" />
-                    </div>
-                  )}
-                </div>
-
-                <h3 className="text-lg font-semibold text-neutral-900 mb-2 line-clamp-2">
-                  {module.title}
-                </h3>
-
-                {module.description && (
-                  <p className="text-neutral-600 text-sm mb-3 line-clamp-2">
-                    {module.description}
-                  </p>
                 )}
 
-                <div className="flex items-center space-x-4 text-sm text-neutral-500 mb-4">
-                  <div className="flex items-center space-x-1">
-                    <Clock className="w-4 h-4" />
-                    <span>{module.estimated_duration || 30} min</span>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Users className="w-4 h-4" />
-                    <span>{module.content_count || 0} lessons</span>
-                  </div>
-                  {module.quiz_count && module.quiz_count > 0 && (
-                    <div className="flex items-center space-x-1">
-                      <Star className="w-4 h-4" />
-                      <span>{module.quiz_count} quiz{module.quiz_count > 1 ? 'es' : ''}</span>
+                {/* Module Header */}
+                <div className="p-6 pb-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                        status === 'certified' ? 'bg-gradient-to-br from-primary-500 to-secondary-500' :
+                        status === 'completed' ? 'bg-neutral-100' :
+                        status === 'in-progress' ? 'bg-accent-100' : 'bg-neutral-100'
+                      }`}>
+                        {status === 'certified' ? (
+                          <Award className="w-5 h-5 text-white" />
+                        ) : (
+                          <BookOpen className={`w-5 h-5 ${
+                          status === 'completed' ? 'text-neutral-600' :
+                          status === 'in-progress' ? 'text-accent-600' : 'text-neutral-600'
+                          }`} />
+                        )}
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded-full ${getDifficultyColor(module.difficulty_level)}`}>
+                        {module.difficulty_level}
+                      </span>
                     </div>
-                  )}
-                </div>
+                    {status === 'completed' && (
+                      <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                        <CheckCircle2 className="w-5 h-5 text-primary-600" />
+                      </div>
+                    )}
+                  </div>
 
-                {/* Progress */}
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-neutral-700">Progress</span>
-                    <span className="text-sm text-neutral-600">
-                      {module.completion_percentage || 0}%
+                  <h3 className="text-lg font-semibold text-neutral-900 mb-2 line-clamp-2">
+                    {module.title}
+                  </h3>
+
+                  {module.description && (
+                    <p className="text-neutral-600 text-sm mb-3 line-clamp-2">
+                      {module.description}
+                    </p>
+                  )}
+
+                  <div className="flex items-center space-x-4 text-sm text-neutral-500 mb-4">
+                    <div className="flex items-center space-x-1">
+                      <Clock className="w-4 h-4" />
+                      <span>{module.estimated_duration || 30} min</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Users className="w-4 h-4" />
+                      <span>{module.content_count || 0} lessons</span>
+                    </div>
+                    {module.quiz_count && module.quiz_count > 0 && (
+                      <div className="flex items-center space-x-1">
+                        <Star className="w-4 h-4" />
+                        <span>{module.quiz_count} quiz{module.quiz_count > 1 ? 'es' : ''}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Progress */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-neutral-700">Progress</span>
+                      <span className="text-sm text-neutral-600">
+                        {module.completion_percentage || 0}%
+                        {hasCertificate && (
+                          <span className="ml-1 text-primary-600">+ Certificate</span>
+                        )}
+                      </span>
+                    </div>
+                    <ProgressBar 
+                      value={module.completion_percentage || 0}
+                      color={getProgressColor(module.completion_percentage || 0)}
+                      animated
+                    />
+                  </div>
+
+                  {/* Requirements */}
+                  <div className="mb-4">
+                    <div className="text-xs text-neutral-600 mb-1">
+                      Requirements to complete:
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <CheckCircle2 className={`w-4 h-4 ${
+                          module.content_completed === module.content_count ? 
+                          'text-primary-600' : 'text-neutral-300'
+                        }`} />
+                        <span className={`text-xs ${
+                          module.content_completed === module.content_count ?
+                          'text-neutral-700' : 'text-neutral-400'
+                        }`}>
+                          Complete all content ({module.content_completed || 0}/{module.content_count || 0})
+                        </span>
+                      </div>
+                      {module.quiz_count > 0 && (
+                        <div className="flex items-center space-x-2">
+                          <CheckCircle2 className={`w-4 h-4 ${
+                            module.quiz_passed ? 'text-primary-600' : 'text-neutral-300'
+                          }`} />
+                          <span className={`text-xs ${
+                            module.quiz_passed ? 'text-neutral-700' : 'text-neutral-400'
+                          }`}>
+                            Pass the quiz
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Category */}
+                  <div className="mb-4">
+                    <span className="text-xs text-neutral-500 uppercase tracking-wide">
+                      {module.category}
                     </span>
                   </div>
-                  <ProgressBar 
-                    value={module.completion_percentage || 0}
-                    color={getProgressColor(module.completion_percentage || 0)}
-                    animated
-                  />
                 </div>
 
-                {/* Category */}
-                <div className="mb-4">
-                  <span className="text-xs text-neutral-500 uppercase tracking-wide">
-                    {module.category}
-                  </span>
+                {/* Module Footer */}
+                <div className="px-6 pb-6">
+                  <Link
+                    to={`/modules/${module.id}`}
+                    className={`w-full flex items-center justify-center space-x-2 ${
+                      status === 'certified' ? 'btn-primary' :
+                      status === 'completed' ? 'btn-secondary' :
+                      status === 'in-progress' ? 'btn-accent' : 'btn-primary'
+                    }`}
+                  >
+                    <Play className="w-4 h-4" />
+                    <span>
+                      {status === 'certified' ? 'View Certificate' : 
+                       status === 'completed' ? 'Take Quiz' :
+                       status === 'in-progress' ? 'Continue' : 'Start'}
+                    </span>
+                  </Link>
                 </div>
               </div>
-
-              {/* Module Footer */}
-              <div className="px-6 pb-6">
-                <Link
-                  to={`/modules/${module.id}`}
-                  className="btn-primary w-full flex items-center justify-center space-x-2"
-                >
-                  <Play className="w-4 h-4" />
-                  <span>
-                    {module.completion_percentage === 100 ? 'Review' : 
-                     module.completion_percentage && module.completion_percentage > 0 ? 'Continue' : 'Start'}
-                  </span>
-                </Link>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12">

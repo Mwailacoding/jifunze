@@ -62,14 +62,20 @@ function validateUser(user: unknown): User {
 }
 
 // Context types
-interface AuthContextType {
+export type AuthContextType = {
+  isAuthenticated: boolean;
+  currentUser: { id: number; name: string }; // Add currentUser property
+  user: User | null; // Add user property
+  isLoading: boolean; // Add isLoading property
+  login: (username: string, password: string) => Promise<LoginResult>;
+  logout: () => void;
+};
+
+interface AuthContextTypeExtended extends AuthContextType {
   user: User | null;
   isLoading: boolean;
-  isAuthenticated: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<LoginResult>;
   register: (userData: RegisterData) => Promise<RegisterResult>;
-  logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
   clearError: () => void;
   refreshUser: () => Promise<void>;
@@ -103,7 +109,7 @@ interface RegisterData {
 }
 
 // Create context
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextTypeExtended | undefined>(undefined);
 
 // Context provider component
 interface AuthProviderProps {
@@ -311,6 +317,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     refreshUser,
     hasRole,
     canAccess,
+    currentUser: user ? { id: user.id, name: `${user.first_name} ${user.last_name}` } : { id: 0, name: '' },
   };
 
   return (
@@ -321,7 +328,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 };
 
 // Custom hook for using the auth context
-export const useAuth = (): AuthContextType => {
+export const useAuth = (): AuthContextTypeExtended => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  CheckCircle, 
+  CheckCircle2, 
   XCircle, 
   ArrowLeft,
   Clock,
   Trophy,
   Flag,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  BookOpen,
+  AlertCircle
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -16,6 +18,7 @@ import { apiClient } from '../../utils/api';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 
 interface QuizQuestion {
   id: number;
@@ -24,6 +27,7 @@ interface QuizQuestion {
   options: string[];
   correct_answer: string;
   points: number;
+  explanation?: string;
 }
 
 interface Quiz {
@@ -33,6 +37,16 @@ interface Quiz {
   passing_score: number;
   time_limit?: number;
   questions: QuizQuestion[];
+  module_id?: number;
+  content_id?: number;
+}
+
+interface QuizResult {
+  score: number;
+  max_score: number;
+  percentage: number;
+  passed: boolean;
+  answers: Record<string, string>;
 }
 
 export const QuizPage: React.FC = () => {
@@ -47,9 +61,9 @@ export const QuizPage: React.FC = () => {
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [quizResult, setQuizResult] = useState<any>(null);
+  const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
   const [showResults, setShowResults] = useState(false);
-  const [quizStarted, setQuizStarted] = useState(false);
+  const [showExplanation, setShowExplanation] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchQuiz = async () => {
@@ -116,6 +130,7 @@ export const QuizPage: React.FC = () => {
   const goToQuestion = (index: number) => {
     if (index >= 0 && index < (quiz?.questions.length || 0)) {
       setCurrentQuestionIndex(index);
+      setShowExplanation(null);
     }
   };
 
@@ -154,6 +169,24 @@ export const QuizPage: React.FC = () => {
     }
   };
 
+  const handleRetryQuiz = () => {
+    setShowResults(false);
+    setCurrentQuestionIndex(0);
+    setAnswers({});
+    setFlaggedQuestions(new Set());
+    if (quiz?.time_limit) {
+      setTimeLeft(quiz.time_limit * 60);
+    }
+  };
+
+  const handleContinueLearning = () => {
+    if (quiz?.module_id) {
+      navigate(`/modules/${quiz.module_id}`);
+    } else {
+      navigate('/modules');
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -174,15 +207,16 @@ export const QuizPage: React.FC = () => {
     return (
       <Layout>
         <div className="text-center py-12">
+          <BookOpen className="w-12 h-12 text-neutral-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-neutral-900 mb-2">
             Quiz not available
           </h3>
-          <button 
+          <Button 
             onClick={() => navigate(-1)} 
-            className="btn-primary"
+            variant="primary"
           >
             Go Back
-          </button>
+          </Button>
         </div>
       </Layout>
     );
@@ -232,33 +266,127 @@ export const QuizPage: React.FC = () => {
 
             <ProgressBar 
               value={quizResult.percentage} 
-              color={quizResult.passed ? 'primary' : 'secondary'}
+              color={quizResult.passed ? 'primary' : 'error'}
               className="mb-6"
             />
 
             <div className="flex justify-center space-x-4">
-              <button
-                onClick={() => navigate(-1)}
-                className="btn-primary"
+              <Button
+                onClick={handleContinueLearning}
+                variant="primary"
               >
                 Continue Learning
-              </button>
+              </Button>
               {!quizResult.passed && (
-                <button
-                  onClick={() => {
-                    setShowResults(false);
-                    setCurrentQuestionIndex(0);
-                    setAnswers({});
-                    setFlaggedQuestions(new Set());
-                    if (quiz.time_limit) {
-                      setTimeLeft(quiz.time_limit * 60);
-                    }
-                  }}
-                  className="btn-outline"
+                <Button
+                  onClick={handleRetryQuiz}
+                  variant="outline"
                 >
                   Retake Quiz
-                </button>
+                </Button>
               )}
+            </div>
+          </div>
+
+          <div className="card mt-6 p-6">
+            <h2 className="text-xl font-semibold mb-4">Question Review</h2>
+            <div className="space-y-6">
+              {quiz.questions.map((question, index) => {
+                const isCorrect = quizResult.answers[question.id] === question.correct_answer;
+                const userAnswer = answers[question.id];
+                const correctAnswer = question.correct_answer;
+                const explanation = question.explanation;
+
+                return (
+                  <div 
+                    key={question.id}
+                    className={`p-4 rounded-lg border ${
+                      isCorrect ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <h3 className="font-medium">
+                        Question {index + 1}: {question.question_text}
+                      </h3>
+                      <Badge variant="text">
+                        {isCorrect ? 'Correct' : 'Incorrect'}
+                      </Badge>
+                    </div>
+
+                    {question.question_type === 'multiple_choice' && (
+                      <div className="space-y-2">
+                        {question.options.map((option, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded border ${
+                              option === correctAnswer
+                                ? 'border-green-500 bg-green-100'
+                                : option === userAnswer && !isCorrect
+                                ? 'border-red-500 bg-red-100'
+                                : 'border-neutral-200'
+                            }`}
+                          >
+                            {option}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {question.question_type === 'true_false' && (
+                      <div className="space-y-2">
+                        {['True', 'False'].map((option) => (
+                          <div
+                            key={option}
+                            className={`p-3 rounded border ${
+                              option === correctAnswer
+                                ? 'border-green-500 bg-green-100'
+                                : option === userAnswer && !isCorrect
+                                ? 'border-red-500 bg-red-100'
+                                : 'border-neutral-200'
+                            }`}
+                          >
+                            {option}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {question.question_type === 'short_answer' && (
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-sm font-medium mb-1">Your answer:</p>
+                          <div className="p-3 rounded border bg-neutral-50">
+                            {userAnswer || 'No answer provided'}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium mb-1">Correct answer:</p>
+                          <div className="p-3 rounded border bg-green-100">
+                            {correctAnswer}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {explanation && (
+                      <div className="mt-3">
+                        <button
+                          onClick={() => setShowExplanation(showExplanation === index ? null : index)}
+                          className="flex items-center text-sm text-blue-600 hover:text-blue-800"
+                        >
+                          <AlertCircle className="w-4 h-4 mr-1" />
+                          {showExplanation === index ? 'Hide explanation' : 'Show explanation'}
+                        </button>
+                        {showExplanation === index && (
+                          <div className="mt-2 p-3 bg-blue-50 rounded text-sm">
+                            {explanation}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -274,13 +402,14 @@ export const QuizPage: React.FC = () => {
     <Layout>
       <div className="max-w-6xl mx-auto">
         <div className="mb-6">
-          <button
+          <Button
             onClick={() => navigate(-1)}
-            className="flex items-center space-x-2 text-neutral-600 hover:text-neutral-900 mb-4"
+            variant="ghost"
+            className="flex items-center space-x-2 mb-4"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back</span>
-          </button>
+          </Button>
 
           <div className="flex items-center justify-between">
             <div>
@@ -317,12 +446,14 @@ export const QuizPage: React.FC = () => {
 
               <div className="grid grid-cols-5 gap-2 mb-4">
                 {quiz.questions.map((q, index) => (
-                  <button
+                  <Button
                     key={q.id}
                     onClick={() => goToQuestion(index)}
+                    variant="ghost"
+                    size="sm"
                     className={`w-8 h-8 rounded text-xs font-medium transition-all relative ${
                       index === currentQuestionIndex
-                        ? 'bg-primary-600 text-white'
+                        ? 'bg-primary-600 text-white hover:bg-primary-700'
                         : answers[q.id]
                         ? 'bg-green-100 text-green-700 hover:bg-green-200'
                         : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
@@ -332,9 +463,18 @@ export const QuizPage: React.FC = () => {
                     {flaggedQuestions.has(q.id) && (
                       <Flag className="w-2 h-2 text-red-500 absolute -top-0.5 -right-0.5" />
                     )}
-                  </button>
+                  </Button>
                 ))}
               </div>
+
+              <Button
+                onClick={() => handleSubmitQuiz()}
+                variant="primary"
+                disabled={isSubmitting}
+                className="w-full"
+              >
+                {isSubmitting ? <LoadingSpinner size="sm" /> : 'Submit Quiz'}
+              </Button>
             </div>
           </div>
 
@@ -346,8 +486,10 @@ export const QuizPage: React.FC = () => {
                     <span className="text-sm font-medium text-neutral-600">
                       Question {currentQuestionIndex + 1} of {totalQuestions}
                     </span>
-                    <button
+                    <Button
                       onClick={() => toggleFlag(currentQuestion.id)}
+                      variant="ghost"
+                      size="sm"
                       className={`flex items-center space-x-1 px-2 py-1 rounded text-xs transition-colors ${
                         flaggedQuestions.has(currentQuestion.id)
                           ? 'bg-red-100 text-red-700'
@@ -356,7 +498,7 @@ export const QuizPage: React.FC = () => {
                     >
                       <Flag className="w-3 h-3" />
                       <span>{flaggedQuestions.has(currentQuestion.id) ? 'Flagged' : 'Flag'}</span>
-                    </button>
+                    </Button>
                   </div>
                   <h2 className="text-xl font-semibold text-neutral-900">
                     {currentQuestion.question_text}
@@ -427,31 +569,33 @@ export const QuizPage: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between">
-              <button
+              <Button
                 onClick={() => goToQuestion(currentQuestionIndex - 1)}
                 disabled={currentQuestionIndex === 0}
-                className="btn-outline disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                variant="outline"
+                className="flex items-center space-x-2"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span>Previous</span>
-              </button>
+              </Button>
 
               {currentQuestionIndex < totalQuestions - 1 ? (
-                <button
+                <Button
                   onClick={() => goToQuestion(currentQuestionIndex + 1)}
-                  className="btn-primary flex items-center space-x-2"
+                  variant="primary"
+                  className="flex items-center space-x-2"
                 >
                   <span>Next</span>
                   <ChevronRight className="w-4 h-4" />
-                </button>
+                </Button>
               ) : (
-                <button
+                <Button
                   onClick={() => handleSubmitQuiz()}
+                  variant="primary"
                   disabled={isSubmitting}
-                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
                   {isSubmitting ? <LoadingSpinner size="sm" /> : 'Submit Quiz'}
-                </button>
+                </Button>
               )}
             </div>
           </div>

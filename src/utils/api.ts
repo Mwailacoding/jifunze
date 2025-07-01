@@ -908,6 +908,43 @@ class ApiClient {
   async getRecentModules(): Promise<Module[]> {
     return this.request<Module[]>('/modules/recent');
   }
+
+  async getUserCertificates(userId: number): Promise<{ module_id: number }[]> {
+    return this.request<{ module_id: number }[]>(`/user/${userId}/certificates`);
+  }
+
+  async getModuleCertificate(moduleId: number): Promise<{
+    id: string;
+    downloadUrl: string;
+  }> {
+    const response = await fetch(`/api/modules/${moduleId}/certificate`, {
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch module certificate');
+    }
+
+    return response.json();
+  }
+
+  async markContentComplete(contentId: number, moduleId: number): Promise<void> {
+    const response = await fetch(`/api/content/${contentId}/complete`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ moduleId }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to mark content as complete');
+    }
+  }
 }
 
 export const apiClient = new ApiClient();

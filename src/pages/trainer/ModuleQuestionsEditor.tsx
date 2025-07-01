@@ -60,17 +60,17 @@ const ModuleQuestionsEditor: React.FC<{
   };
 
   const handleOptionChange = (index: number, value: string) => {
-    const newOptions = [...currentQuestion.options];
+    const newOptions = [...(currentQuestion.options || [])];
     newOptions[index] = value;
     setCurrentQuestion(prev => ({ ...prev, options: newOptions }));
   };
 
   const addOption = () => {
-    setCurrentQuestion(prev => ({ ...prev, options: [...prev.options, ''] }));
+    setCurrentQuestion(prev => ({ ...prev, options: [...(prev.options || []), ''] }));
   };
 
   const removeOption = (index: number) => {
-    const newOptions = currentQuestion.options.filter((_, i) => i !== index);
+    const newOptions = (currentQuestion.options ?? []).filter((_, i) => i !== index);
     setCurrentQuestion(prev => ({ ...prev, options: newOptions }));
   };
 
@@ -209,7 +209,7 @@ const ModuleQuestionsEditor: React.FC<{
                 Options
               </label>
               <div className="space-y-2">
-                {currentQuestion.options.map((option, index) => (
+                {(currentQuestion.options ?? []).map((option, index) => (
                   <div key={index} className="flex items-center space-x-2">
                     <input
                       type={currentQuestion.question_type === 'multiple_choice' ? 'radio' : 'hidden'}
@@ -225,7 +225,7 @@ const ModuleQuestionsEditor: React.FC<{
                       className="flex-1 p-2 border border-gray-300 rounded-md"
                       placeholder={`Option ${index + 1}`}
                     />
-                    {currentQuestion.question_type === 'multiple_choice' && currentQuestion.options.length > 2 && (
+                    {currentQuestion.question_type === 'multiple_choice' && (currentQuestion.options ?? []).length > 2 && (
                       <button
                         type="button"
                         onClick={() => removeOption(index)}

@@ -15,14 +15,43 @@ import {
 import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
-import { apiClient, TrainerDashboard as TrainerDashboardType } from '../../utils/api';
+import { apiClient } from '../../utils/api';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+
+// Define the TrainerDashboard type within the component file
+interface TrainerDashboard {
+  total_modules: number;
+  active_modules: number;
+  total_learners: number;
+  recent_modules: {
+    id: number;
+    title: string;
+    created_at: string;
+    learners: number;
+    category?: string;
+    completion_rate?: number;
+  }[];
+  assignment_stats: {
+    module_title: string;
+    assigned_to: number;
+    completed_by: number;
+  }[];
+  recent_quiz_results: {
+    first_name: string;
+    last_name: string;
+    quiz_title: string;
+    score: number;
+    max_score: number;
+    passed: boolean;
+    completed_at: string;
+  }[];
+}
 
 export const TrainerDashboard: React.FC = () => {
   const { user } = useAuth();
   const { showError } = useNotification();
-  const [dashboardData, setDashboardData] = useState<TrainerDashboardType>({
+  const [dashboardData, setDashboardData] = useState<TrainerDashboard>({
     total_modules: 0,
     active_modules: 0,
     total_learners: 0,
@@ -36,7 +65,20 @@ export const TrainerDashboard: React.FC = () => {
     const fetchDashboardData = async () => {
       try {
         const data = await apiClient.getTrainerDashboard();
-        setDashboardData(data || {
+        const transformedData: TrainerDashboard = {
+          ...data,
+          recent_quiz_results: data.recent_quiz_results.map(result => ({
+            ...result,
+            max_score: (result as any).max_score ?? 0, // Type assertion to ensure max_score is handled
+            passed: (result as any).passed ?? false // Type assertion to ensure passed is handled
+          })),
+          recent_modules: data.recent_modules.map(module => ({
+            ...module,
+            completion_rate: (module as any).completion_rate ?? 0, // Type assertion to ensure completion_rate is handled
+            category: (module as any).category ?? 'Unknown Category' // Type assertion to ensure category is handled
+          }))
+        };
+        setDashboardData(transformedData || {
           total_modules: 0,
           active_modules: 0,
           total_learners: 0,
@@ -243,7 +285,7 @@ export const TrainerDashboard: React.FC = () => {
                     <div className="flex-1">
                       <h3 className="font-medium text-gray-900 mb-1">{module.title}</h3>
                       <div className="flex items-center space-x-4 text-sm text-gray-600 mb-2">
-                        <span>{module.category}</span>
+                        <span>{module.category || 'Unknown Category'}</span>
                         <span>{module.learners || 0} learners</span>
                         <span>{Math.round(module.completion_rate || 0)}% completion</span>
                       </div>
@@ -301,13 +343,13 @@ export const TrainerDashboard: React.FC = () => {
                         {result.first_name} {result.last_name}
                       </p>
                       <p className="text-xs text-gray-600">
-                        {result.quiz_title} - {result.score}/{result.max_score}
+                        {result.score}/{result.max_score}
                       </p>
                     </div>
                     <span className={`text-xs px-2 py-1 rounded-full ${
                       result.passed 
-                        ? 'bg-blue-100 text-blue-700' 
-                        : 'bg-red-100 text-red-700'
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-red-100 text-red-700'
                     }`}>
                       {result.passed ? 'Passed' : 'Failed'}
                     </span>
@@ -368,3 +410,6 @@ export const TrainerDashboard: React.FC = () => {
     </Layout>
   );
 };
+
+// Export the TrainerDashboard type
+// Removed duplicate definition as it is already defined above.

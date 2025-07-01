@@ -11,7 +11,11 @@ import {
   Star,
   ArrowLeft,
   Lock,
-  ExternalLink
+  ExternalLink,
+  Flag,
+  ChevronLeft,
+  ChevronRight,
+  XCircle
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,6 +24,7 @@ import { apiClient } from '../../utils/api';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Modal } from '../../components/ui/Modal';
+import { Badge } from '../../components/ui/Badge';
 
 // Interface definitions
 interface YouTubeVideo {
@@ -119,7 +124,14 @@ export const ModuleDetailPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedContent, setSelectedContent] = useState<ModuleContent | null>(null);
   const [isContentModalOpen, setIsContentModalOpen] = useState(false);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizData, setQuizData] = useState<any>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [quizResult, setQuizResult] = useState<any>(null);
 
+  // Fetch module data
   useEffect(() => {
     const fetchModule = async () => {
       if (!moduleId) return;
@@ -156,6 +168,7 @@ export const ModuleDetailPage: React.FC = () => {
 
   const handleContentComplete = async (content: ModuleContent) => {
     try {
+      // Mark content as completed
       await apiClient.updateProgress({
         content_id: content.id,
         status: 'completed'
@@ -163,10 +176,25 @@ export const ModuleDetailPage: React.FC = () => {
       
       showSuccess('Progress Updated', 'Content marked as completed!');
       
+      // Refresh module data
       if (moduleId) {
         const apiData = await apiClient.getModule(parseInt(moduleId));
         const updatedModule = transformModuleData(apiData);
         setModule(updatedModule);
+      }
+
+      // Check if this content has an associated quiz
+      const quiz = await apiClient.getContentQuiz(content.id);
+      if (quiz) {
+        setQuizData(quiz);
+        setShowQuiz(true);
+        
+        // Initialize answers object
+        const initialAnswers: Record<number, string> = {};
+        quiz.questions.forEach((question: any) => {
+          initialAnswers[question.id] = '';
+        });
+        setQuizAnswers(initialAnswers);
       }
     } catch (error) {
       showError('Error', 'Failed to update progress');
@@ -180,6 +208,57 @@ export const ModuleDetailPage: React.FC = () => {
     } catch (error) {
       showError('Download Failed', 'Failed to download content for offline access');
     }
+  };
+
+  const handleQuizAnswerChange = (questionId: number, answer: string) => {
+    setQuizAnswers(prev => ({
+      ...prev,
+      [questionId]: answer
+    }));
+  };
+
+  const handleQuizSubmit = async () => {
+    if (!quizData) return;
+
+    try {
+      const submissionAnswers = quizData.questions.map((q: any) => ({
+        question_id: q.id,
+        answer: quizAnswers[q.id] || ''
+      }));
+
+      const result = await apiClient.submitQuiz(quizData.id, submissionAnswers);
+      setQuizResult(result);
+      setQuizSubmitted(true);
+      
+      if (result.passed) {
+        showSuccess('Quiz Passed', `You scored ${result.score}/${result.max_score} (${result.percentage}%)`);
+      } else {
+        showError('Quiz Failed', `You scored ${result.score}/${result.max_score}. Need ${quizData.passing_score}% to pass.`);
+      }
+
+      // Refresh module data after quiz submission
+      if (moduleId) {
+        const apiData = await apiClient.getModule(parseInt(moduleId));
+        const updatedModule = transformModuleData(apiData);
+        setModule(updatedModule);
+      }
+    } catch (error) {
+      showError('Error', 'Failed to submit quiz');
+    }
+  };
+
+  const handleQuizRetry = () => {
+    setQuizSubmitted(false);
+    setCurrentQuestionIndex(0);
+    setQuizAnswers({});
+  };
+
+  const handleQuizClose = () => {
+    setShowQuiz(false);
+    setQuizData(null);
+    setQuizSubmitted(false);
+    setQuizResult(null);
+    setCurrentQuestionIndex(0);
   };
 
   const getContentIcon = (contentType: string) => {
@@ -466,6 +545,185 @@ export const ModuleDetailPage: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Quiz Modal */}
+      {showQuiz && quizData && (
+        <Modal
+          isOpen={showQuiz}
+          onClose={handleQuizClose}
+          title={`Quiz: ${quizData.title}`}
+          size="xl"
+          {...(!quizSubmitted && { onClose: handleQuizClose })}
+        >
+          {!quizSubmitted ? (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-neutral-600">
+                  Question {currentQuestionIndex + 1} of {quizData.questions.length}
+                </div>
+                <Badge variant="text">
+                  {quizData.passing_score}% to pass
+                </Badge>
+              </div>
+
+              <div className="bg-neutral-50 rounded-lg p-6">
+                <h3 className="text-lg font-semibold mb-4">
+                  {quizData.questions[currentQuestionIndex].question_text}
+                </h3>
+
+                {quizData.questions[currentQuestionIndex].question_type === 'multiple_choice' && (
+                  <div className="space-y-3">
+                    {quizData.questions[currentQuestionIndex].options.map((option: string, idx: number) => (
+                      <label
+                        key={idx}
+                        className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                          quizAnswers[quizData.questions[currentQuestionIndex].id] === option
+                            ? 'border-primary-500 bg-primary-50'
+                            : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`question-${quizData.questions[currentQuestionIndex].id}`}
+                          value={option}
+                          checked={quizAnswers[quizData.questions[currentQuestionIndex].id] === option}
+                          onChange={() => handleQuizAnswerChange(quizData.questions[currentQuestionIndex].id, option)}
+                          className="text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-neutral-900">{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {quizData.questions[currentQuestionIndex].question_type === 'true_false' && (
+                  <div className="space-y-3">
+                    {['True', 'False'].map((option) => (
+                      <label
+                        key={option}
+                        className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                          quizAnswers[quizData.questions[currentQuestionIndex].id] === option
+                            ? 'border-primary-500 bg-primary-50'
+                            : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`question-${quizData.questions[currentQuestionIndex].id}`}
+                          value={option}
+                          checked={quizAnswers[quizData.questions[currentQuestionIndex].id] === option}
+                          onChange={() => handleQuizAnswerChange(quizData.questions[currentQuestionIndex].id, option)}
+                          className="text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-neutral-900">{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {quizData.questions[currentQuestionIndex].question_type === 'short_answer' && (
+                  <textarea
+                    value={quizAnswers[quizData.questions[currentQuestionIndex].id] || ''}
+                    onChange={(e) => handleQuizAnswerChange(quizData.questions[currentQuestionIndex].id, e.target.value)}
+                    placeholder="Enter your answer..."
+                    className="w-full p-4 border border-neutral-200 rounded-lg focus:border-primary-500 focus:ring focus:ring-primary-200 min-h-32"
+                  />
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t">
+                <button
+                  onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                  disabled={currentQuestionIndex === 0}
+                  className="btn-outline flex items-center space-x-2 disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Previous</span>
+                </button>
+
+                {currentQuestionIndex < quizData.questions.length - 1 ? (
+                  <button
+                    onClick={() => setCurrentQuestionIndex(prev => prev + 1)}
+                    className="btn-primary flex items-center space-x-2"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleQuizSubmit}
+                    className="btn-primary"
+                  >
+                    Submit Quiz
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${
+                quizResult.passed ? 'bg-green-100' : 'bg-red-100'
+              }`}>
+                {quizResult.passed ? (
+                  <CheckCircle2 className="w-10 h-10 text-green-600" />
+                ) : (
+                  <XCircle className="w-10 h-10 text-red-600" />
+                )}
+              </div>
+
+              <h3 className="text-2xl font-bold text-neutral-900 mb-2">
+                {quizResult.passed ? 'Quiz Passed!' : 'Quiz Failed'}
+              </h3>
+              
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div>
+                  <div className="text-xl font-bold">
+                    {quizResult.score}/{quizResult.max_score}
+                  </div>
+                  <div className="text-sm text-neutral-600">Score</div>
+                </div>
+                <div>
+                  <div className={`text-xl font-bold ${
+                    quizResult.passed ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {Math.round(quizResult.percentage)}%
+                  </div>
+                  <div className="text-sm text-neutral-600">Percentage</div>
+                </div>
+                <div>
+                  <div className="text-xl font-bold">
+                    {quizResult.passed ? 'Passed' : 'Failed'}
+                  </div>
+                  <div className="text-sm text-neutral-600">Result</div>
+                </div>
+              </div>
+
+              <ProgressBar 
+                value={quizResult.percentage} 
+                color={quizResult.passed ? 'primary' : 'accent'}
+                className="mb-6"
+              />
+
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={handleQuizClose}
+                  className="btn-primary"
+                >
+                  Continue Learning
+                </button>
+                {!quizResult.passed && (
+                  <button
+                    onClick={handleQuizRetry}
+                    className="btn-outline"
+                  >
+                    Try Again
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
     </Layout>
   );
 };

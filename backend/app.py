@@ -1236,6 +1236,7 @@ def get_modules(current_user):
 @app.route('/modules/<int:module_id>', methods=['GET'])
 @token_required
 def get_module(current_user, module_id):
+    """Get module details with content and quiz requirements"""
     module = execute_query(
         "SELECT * FROM modules WHERE id = %s AND is_active = TRUE",
         (module_id,),
@@ -1245,12 +1246,21 @@ def get_module(current_user, module_id):
     if not module:
         return jsonify({'message': 'Module not found'}), 404
 
+    # Get all content for this module in order
     contents = execute_query(
         "SELECT * FROM module_content WHERE module_id = %s ORDER BY display_order",
         (module_id,),
         fetch_all=True
     )
 
+    # Get the module's quiz
+    quiz = execute_query(
+        "SELECT * FROM quizzes WHERE module_id = %s AND is_active = TRUE LIMIT 1",
+        (module_id,),
+        fetch_one=True
+    )
+
+    # Get user's progress for each content item
     for content in contents:
         progress = execute_query(
             "SELECT * FROM user_progress WHERE user_id = %s AND content_id = %s",
@@ -1262,20 +1272,461 @@ def get_module(current_user, module_id):
             'progress': 0
         }
 
-        if content['content_type'] == 'video':
-            youtube_video = execute_query(
-                "SELECT * FROM youtube_videos WHERE content_id = %s",
-                (content['id'],),
-                fetch_one=True
-            )
-            if youtube_video:
-                content['youtube_video'] = youtube_video
-
+        # Check if content is available offline
         content['offline_available'] = check_offline_access(current_user['id'], content['id'])
 
-    module['contents'] = contents
-    return jsonify(dict_to_json_serializable(module))
+    # Check if user has completed the module quiz
+    quiz_completed = False
+    if quiz:
+        quiz_result = execute_query(
+            "SELECT * FROM quiz_results WHERE user_id = %s AND quiz_id = %s AND passed = TRUE",
+            (current_user['id'], quiz['id']),
+            fetch_one=True
+        )
+        quiz_completed = bool(quiz_result)
 
+    # Check if all content is completed
+    all_content_completed = all(
+        content['user_progress']['status'] == 'completed' 
+        for content in contents
+    )
+
+    # Module is only complete when both content and quiz are done
+    module_completed = all_content_completed and (not quiz or quiz_completed)
+
+    # Get next module ID if available
+    next_module = execute_query(
+        "SELECT id FROM modules WHERE is_active = TRUE AND id > %s ORDER BY id ASC LIMIT 1",
+        (module_id,),
+        fetch_one=True
+    )
+
+    return jsonify({
+        'module': module,
+        'contents': contents,
+        'quiz': quiz,
+        'module_completed': module_completed,
+        'quiz_completed': quiz_completed,
+        'all_content_completed': all_content_completed,
+        'next_module_id': next_module['id'] if next_module else None
+    })
+
+@app.route('/content/<int:content_id>/complete', methods=['POST'])
+@token_required
+def complete_content(current_user, content_id):
+    """Mark content as completed and check if module can be advanced"""
+    try:
+        # Verify content exists and get module info
+        content = execute_query(
+            "SELECT mc.*, m.id as module_id FROM module_content mc "
+            "JOIN modules m ON mc.module_id = m.id "
+            "WHERE mc.id = %s",
+            (content_id,),
+            fetch_one=True
+        )
+        if not content:
+            return jsonify({'message': 'Content not found'}), 404
+
+        # Check if user has already completed this content
+        existing_progress = execute_query(
+            "SELECT * FROM user_progress WHERE user_id = %s AND content_id = %s",
+            (current_user['id'], content_id),
+            fetch_one=True
+        )
+
+        if existing_progress and existing_progress['status'] == 'completed':
+            return jsonify({'message': 'Content already completed'}), 200
+
+        # Update or create progress record
+        if existing_progress:
+            execute_query(
+                "UPDATE user_progress SET status = 'completed', completed_at = %s "
+                "WHERE user_id = %s AND content_id = %s",
+                (datetime.now(timezone.utc), current_user['id'], content_id)
+            )
+        else:
+            execute_query(
+                "INSERT INTO user_progress (user_id, content_id, status, started_at, completed_at) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (
+                    current_user['id'], content_id, 'completed',
+                    datetime.now(timezone.utc), datetime.now(timezone.utc)
+                )
+            )
+
+        # Award points for completion
+        points_result = award_points(
+            current_user['id'],
+            app.config['POINTS_FOR_COMPLETION'],
+            f"Completed content {content_id}"
+        )
+
+        # Check if all content in module is completed
+        all_content = execute_query(
+            "SELECT id FROM module_content WHERE module_id = %s",
+            (content['module_id'],),
+            fetch_all=True
+        )
+        
+        completed_content = execute_query(
+            "SELECT COUNT(DISTINCT content_id) as count FROM user_progress "
+            "WHERE user_id = %s AND status = 'completed' "
+            "AND content_id IN (SELECT id FROM module_content WHERE module_id = %s)",
+            (current_user['id'], content['module_id']),
+            fetch_one=True
+        )['count']
+
+        all_content_completed = completed_content >= len(all_content)
+
+        # Check if module has a quiz
+        quiz = execute_query(
+            "SELECT id FROM quizzes WHERE module_id = %s AND is_active = TRUE LIMIT 1",
+            (content['module_id'],),
+            fetch_one=True
+        )
+
+        response = {
+            'message': 'Content marked as completed',
+            'points_awarded': app.config['POINTS_FOR_COMPLETION'],
+            'all_content_completed': all_content_completed,
+            'module_completed': False,
+            'quiz_required': bool(quiz),
+            'quiz_completed': False
+        }
+
+        if points_result.get('badges_awarded'):
+            response['badges_awarded'] = points_result['badges_awarded']
+
+        # If there's a quiz and all content is completed, check quiz status
+        if quiz and all_content_completed:
+            quiz_result = execute_query(
+                "SELECT passed FROM quiz_results WHERE user_id = %s AND quiz_id = %s",
+                (current_user['id'], quiz['id']),
+                fetch_one=True
+            )
+            
+            if quiz_result and quiz_result['passed']:
+                response['quiz_completed'] = True
+                response['module_completed'] = True
+                
+                # Award additional points for module completion
+                module_points = award_points(
+                    current_user['id'],
+                    app.config['POINTS_FOR_COMPLETION'] * 2,  # Bonus for module completion
+                    f"Completed module {content['module_id']}"
+                )
+                response['module_points_awarded'] = app.config['POINTS_FOR_COMPLETION'] * 2
+                
+                if module_points.get('badges_awarded'):
+                    if 'badges_awarded' not in response:
+                        response['badges_awarded'] = []
+                    response['badges_awarded'].extend(module_points['badges_awarded'])
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        app.logger.error(f"Error completing content: {str(e)}")
+        return jsonify({'message': 'Error completing content'}), 500
+
+@app.route('/modules/<int:module_id>/quiz/attempt', methods=['POST'])
+@token_required
+def attempt_module_quiz(current_user, module_id):
+    """Attempt the quiz for a module"""
+    try:
+        # Verify module exists
+        module = execute_query(
+            "SELECT * FROM modules WHERE id = %s AND is_active = TRUE",
+            (module_id,),
+            fetch_one=True
+        )
+        if not module:
+            return jsonify({'message': 'Module not found'}), 404
+
+        # Check if user has completed all content
+        all_content = execute_query(
+            "SELECT id FROM module_content WHERE module_id = %s",
+            (module_id,),
+            fetch_all=True
+        )
+        
+        completed_content = execute_query(
+            "SELECT COUNT(DISTINCT content_id) as count FROM user_progress "
+            "WHERE user_id = %s AND status = 'completed' "
+            "AND content_id IN (SELECT id FROM module_content WHERE module_id = %s)",
+            (current_user['id'], module_id),
+            fetch_one=True
+        )['count']
+
+        if completed_content < len(all_content):
+            return jsonify({
+                'message': 'You must complete all module content before attempting the quiz',
+                'content_completed': completed_content,
+                'content_required': len(all_content)
+            }), 403
+
+        # Get the quiz
+        quiz = execute_query(
+            "SELECT * FROM quizzes WHERE module_id = %s AND is_active = TRUE LIMIT 1",
+            (module_id,),
+            fetch_one=True
+        )
+        if not quiz:
+            return jsonify({'message': 'No quiz available for this module'}), 404
+
+        # Check if user has already passed this quiz
+        existing_result = execute_query(
+            "SELECT * FROM quiz_results WHERE user_id = %s AND quiz_id = %s AND passed = TRUE",
+            (current_user['id'], quiz['id']),
+            fetch_one=True
+        )
+        if existing_result:
+            return jsonify({
+                'message': 'You have already passed this quiz',
+                'quiz_id': quiz['id'],
+                'passed': True,
+                'previous_score': existing_result['score'],
+                'previous_percentage': existing_result['percentage']
+            }), 200
+
+        # Get quiz questions (without answers)
+        questions = execute_query(
+            "SELECT id, question_text, question_type, options, points "
+            "FROM quiz_questions WHERE quiz_id = %s",
+            (quiz['id'],),
+            fetch_all=True
+        )
+
+        return jsonify({
+            'quiz_id': quiz['id'],
+            'title': quiz['title'],
+            'description': quiz['description'],
+            'passing_score': quiz['passing_score'],
+            'time_limit': quiz['time_limit'],
+            'questions': questions,
+            'attempts_allowed': quiz.get('attempts_allowed', 3),
+            'previous_attempts': execute_query(
+                "SELECT COUNT(*) as attempts FROM quiz_results "
+                "WHERE user_id = %s AND quiz_id = %s",
+                (current_user['id'], quiz['id']),
+                fetch_one=True
+            )['attempts']
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error attempting module quiz: {str(e)}")
+        return jsonify({'message': 'Error attempting quiz'}), 500
+
+@app.route('/modules/<int:module_id>/quiz/submit', methods=['POST'])
+@token_required
+def submit_module_quiz(current_user, module_id):
+    """Submit quiz answers for a module"""
+    try:
+        data = request.get_json()
+        if 'answers' not in data or not isinstance(data['answers'], dict):
+            return jsonify({'message': 'Answers are required'}), 400
+
+        # Verify module exists
+        module = execute_query(
+            "SELECT * FROM modules WHERE id = %s AND is_active = TRUE",
+            (module_id,),
+            fetch_one=True
+        )
+        if not module:
+            return jsonify({'message': 'Module not found'}), 404
+
+        # Get the quiz
+        quiz = execute_query(
+            "SELECT * FROM quizzes WHERE module_id = %s AND is_active = TRUE LIMIT 1",
+            (module_id,),
+            fetch_one=True
+        )
+        if not quiz:
+            return jsonify({'message': 'No quiz available for this module'}), 404
+
+        # Check if user has completed all content
+        all_content = execute_query(
+            "SELECT id FROM module_content WHERE module_id = %s",
+            (module_id,),
+            fetch_all=True
+        )
+        
+        completed_content = execute_query(
+            "SELECT COUNT(DISTINCT content_id) as count FROM user_progress "
+            "WHERE user_id = %s AND status = 'completed' "
+            "AND content_id IN (SELECT id FROM module_content WHERE module_id = %s)",
+            (current_user['id'], module_id),
+            fetch_one=True
+        )['count']
+
+        if completed_content < len(all_content):
+            return jsonify({
+                'message': 'You must complete all module content before submitting the quiz',
+                'content_completed': completed_content,
+                'content_required': len(all_content)
+            }), 403
+
+        # Get all questions for this quiz
+        questions = execute_query(
+            "SELECT id, question_text, correct_answer, points FROM quiz_questions "
+            "WHERE quiz_id = %s",
+            (quiz['id'],),
+            fetch_all=True
+        )
+
+        # Calculate score
+        total_score = 0
+        max_score = sum(q['points'] for q in questions)
+        correct_answers = {}
+        user_answers = data['answers']
+
+        for question in questions:
+            correct_answers[str(question['id'])] = question['correct_answer']
+            if str(question['id']) in user_answers and user_answers[str(question['id'])] == question['correct_answer']:
+                total_score += question['points']
+
+        percentage = (total_score / max_score) * 100 if max_score > 0 else 0
+        passed = percentage >= quiz['passing_score']
+
+        # Save quiz result
+        execute_query(
+            "INSERT INTO quiz_results (user_id, quiz_id, score, max_score, "
+            "percentage, passed, answers, correct_answers, completed_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                current_user['id'], quiz['id'], total_score, max_score,
+                percentage, passed, json.dumps(user_answers), json.dumps(correct_answers),
+                datetime.now(timezone.utc)
+            )
+        )
+
+        response = {
+            'message': 'Quiz submitted successfully',
+            'quiz_id': quiz['id'],
+            'score': total_score,
+            'max_score': max_score,
+            'percentage': percentage,
+            'passed': passed,
+            'module_completed': passed,
+            'badges_awarded': [],
+            'points_awarded': 0
+        }
+
+        if passed:
+            # Award points for passing the quiz
+            points_result = award_points(
+                current_user['id'],
+                app.config['POINTS_FOR_QUIZ'],
+                f"Passed quiz for module {module_id} with score {percentage}%"
+            )
+            response['points_awarded'] = app.config['POINTS_FOR_QUIZ']
+            
+            if points_result.get('badges_awarded'):
+                response['badges_awarded'] = points_result['badges_awarded']
+
+            # Check for quiz-specific badges
+            quiz_badges = check_quiz_badges(current_user['id'], quiz['id'], percentage)
+            if quiz_badges:
+                if 'badges_awarded' not in response:
+                    response['badges_awarded'] = []
+                response['badges_awarded'].extend(quiz_badges)
+            
+            # Update leaderboard if user has an employer
+            if current_user.get('employer_id'):
+                update_leaderboard(current_user['id'], current_user['employer_id'])
+        else:
+            # Allow retaking the quiz if failed
+            response['message'] = 'Quiz submitted but not passed - you can retake it'
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        app.logger.error(f"Error submitting module quiz: {str(e)}")
+        return jsonify({'message': 'Error submitting quiz'}), 500
+
+@app.route('/modules/<int:module_id>/next', methods=['GET'])
+@token_required
+def get_next_module(current_user, module_id):
+    """Get the next module if current one is completed"""
+    try:
+        # Verify current module exists
+        current_module = execute_query(
+            "SELECT * FROM modules WHERE id = %s AND is_active = TRUE",
+            (module_id,),
+            fetch_one=True
+        )
+        if not current_module:
+            return jsonify({'message': 'Current module not found'}), 404
+
+        # Check if current module is completed
+        # 1. Check all content is completed
+        all_content = execute_query(
+            "SELECT id FROM module_content WHERE module_id = %s",
+            (module_id,),
+            fetch_all=True
+        )
+        
+        completed_content = execute_query(
+            "SELECT COUNT(DISTINCT content_id) as count FROM user_progress "
+            "WHERE user_id = %s AND status = 'completed' "
+            "AND content_id IN (SELECT id FROM module_content WHERE module_id = %s)",
+            (current_user['id'], module_id),
+            fetch_one=True
+        )['count']
+
+        if completed_content < len(all_content):
+            return jsonify({
+                'message': 'You must complete all module content first',
+                'content_completed': completed_content,
+                'content_required': len(all_content)
+            }), 403
+
+        # 2. Check quiz is passed (if module has quiz)
+        quiz = execute_query(
+            "SELECT id FROM quizzes WHERE module_id = %s AND is_active = TRUE LIMIT 1",
+            (module_id,),
+            fetch_one=True
+        )
+        
+        if quiz:
+            quiz_result = execute_query(
+                "SELECT passed FROM quiz_results WHERE user_id = %s AND quiz_id = %s",
+                (current_user['id'], quiz['id']),
+                fetch_one=True
+            )
+            
+            if not quiz_result or not quiz_result['passed']:
+                return jsonify({
+                    'message': 'You must pass the module quiz first',
+                    'quiz_passed': False,
+                    'quiz_id': quiz['id']
+                }), 403
+
+        # Get next module in sequence
+        next_module = execute_query(
+            "SELECT id, title FROM modules "
+            "WHERE is_active = TRUE AND id > %s "
+            "ORDER BY id ASC LIMIT 1",
+            (module_id,),
+            fetch_one=True
+        )
+
+        if not next_module:
+            return jsonify({
+                'message': 'Current module completed - this is the last module',
+                'next_module': None,
+                'all_modules_completed': True
+            }), 200
+
+        return jsonify({
+            'message': 'Module completed - next module available',
+            'next_module': next_module,
+            'all_modules_completed': False
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error getting next module: {str(e)}")
+        return jsonify({'message': 'Error checking module progression'}), 500
+    
 @app.route('/content/<int:content_id>/questions', methods=['POST'])
 @token_required
 @trainer_required
