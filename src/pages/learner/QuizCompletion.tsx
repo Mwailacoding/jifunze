@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -179,3 +179,4 @@ export const QuizCompletionModal: React.FC<QuizCompletionModalProps> = ({
     </div>
   );
 };
+

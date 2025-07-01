@@ -41,7 +41,10 @@ export const QuizListPage: React.FC = () => {
         ]);
         
         setQuizzes(quizzesData);
-        setModule(moduleData);
+        setModule({
+          ...moduleData,
+          completion_percentage: moduleData.completion_percentage ?? 0
+        });
       } catch (error) {
         showError('Error', 'Failed to load quizzes');
         navigate(-1);

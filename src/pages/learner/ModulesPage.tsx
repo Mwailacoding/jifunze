@@ -17,7 +17,25 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../utils/api';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
-import { Module } from '../../types';
+// Make sure '../../types' exports 'Module', or import the correct type name.
+// If the type is named differently (e.g., 'IModule'), update the import accordingly.
+// Example if the type is named 'IModule':
+// import { IModule as Module } from '../../types';
+
+// If 'Module' does not exist, define it here temporarily:
+export type Module = {
+  id: number;
+  title: string;
+  description?: string;
+  category: string;
+  difficulty_level: string;
+  estimated_duration?: number;
+  content_count?: number;
+  quiz_count?: number;
+  completion_percentage?: number;
+  content_completed?: number;
+  quiz_passed?: boolean;
+};
 import { useAuth } from '../../contexts/AuthContext';
 import { CertificateBadge } from '../../components/certificates/CertificateBadge';
 
@@ -113,7 +131,7 @@ export const ModulesPage: React.FC = () => {
       if (module.completion_percentage === 100) {
         return certificates[module.id] ? 'certified' : 'completed';
       }
-      return module.completion_percentage > 0 ? 'in-progress' : 'not-started';
+      return (module.completion_percentage ?? 0) > 0 ? 'in-progress' : 'not-started';
   };
 
   if (isLoading) {
@@ -333,7 +351,7 @@ export const ModulesPage: React.FC = () => {
                           Complete all content ({module.content_completed || 0}/{module.content_count || 0})
                         </span>
                       </div>
-                      {module.quiz_count > 0 && (
+                      {(module.quiz_count !== undefined && module.quiz_count > 0) && (
                         <div className="flex items-center space-x-2">
                           <CheckCircle2 className={`w-4 h-4 ${
                             module.quiz_passed ? 'text-primary-600' : 'text-neutral-300'

@@ -15,33 +15,10 @@ export interface User {
 
 export interface Module {
   id: number;
-  name?: string; // Made optional
   title: string;
-  description?: string;
-  category: string; // Made optional
-  difficulty_level: 'beginner' | 'intermediate' | 'advanced'; // Made optional
-  estimated_duration?: number;
-  is_active?: boolean; // Made optional
-  created_by?: number; // Made optional
-  created_at?: string; // Made optional
-  completion_percentage?: number;
-  contents?: ModuleContent[];
-  content_count?: number;
-  quiz_count?: number;
-  learner_count?: number;
-  completion_rate?: number;
-  created_by_name?: string;
-  user_progress?: UserProgress;
-  youtube_video?: YouTubeVideo;
-  offline_available?: boolean;
-  assignments?: Assignment[];
-  quizzes?: Quiz[];
-  user_status?: 'not_started' | 'in_progress' | 'completed';
-  badge_associated?: Badge;
-  certificates?: Certificate[];
-  notifications?: Notification[];
-  dashboard_stats?: DashboardStats;
-  progress_summary?: ProgressSummary;
+  category: string;
+  completion_percentage: number;
+  // Add other fields as needed
 }
 
 export interface ModuleContent {
