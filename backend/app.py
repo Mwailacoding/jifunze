@@ -105,7 +105,7 @@ os.makedirs('logs', exist_ok=True)
 def get_db_connection():
     max_retries = 3
     retry_delay = 1  # seconds
-    
+
     for attempt in range(max_retries):
         try:
             conn = mysql.connector.connect(**db_config)
@@ -333,49 +333,58 @@ def check_offline_access(user_id, content_id):
         str(content_id)
     )
     return os.path.exists(offline_path)
-
 def award_points(user_id, points, reason):
     """Award points to a user and check for badge achievements"""
-    # Add points
-    execute_query(
-        "INSERT INTO user_points (user_id, points, reason, awarded_at) "
-        "VALUES (%s, %s, %s, %s)",
-        (user_id, points, reason, datetime.now(timezone.utc))
-    )
+    try:
+        # Add points
+        execute_query(
+            "INSERT INTO user_points (user_id, points, reason, awarded_at) "
+            "VALUES (%s, %s, %s, %s)",
+            (user_id, points, reason, datetime.now(timezone.utc))
+        )  # <-- FIXED: Added closing parenthesis here
 
-    # Get total points
-    result = execute_query(
-        "SELECT COALESCE(SUM(points), 0) as total_points FROM user_points WHERE user_id = %s",
-        (user_id,),
-        fetch_one=True
-    )
-    total_points = result['total_points']
+        # Get total points
+        result = execute_query(
+            "SELECT COALESCE(SUM(points), 0) as total_points FROM user_points WHERE user_id = %s",
+            (user_id,),
+            fetch_one=True
+        )
+        total_points = result['total_points']
+        
 
-    # Check for badge thresholds
-    badges_awarded = []
-    for badge_level, threshold in app.config['BADGE_THRESHOLDS'].items():
-        if total_points >= threshold:
-            # Check if user already has this badge
-            result = execute_query(
-                "SELECT 1 FROM user_badges WHERE user_id = %s AND badge_id = %s",
-                (user_id, badge_level),
-                fetch_one=True
-            )
-            if not result:
-                # Award badge
-                execute_query(
-                    "INSERT INTO user_badges (user_id, badge_id, earned_at) "
-                    "VALUES (%s, %s, %s)",
-                    (user_id, badge_level, datetime.now(timezone.utc))
+        # Check for badge thresholds
+        badges_awarded = []
+        for badge_level, threshold in app.config['BADGE_THRESHOLDS'].items():
+            if total_points >= threshold:
+                # Check if user already has this badge
+                result = execute_query(
+                    "SELECT 1 FROM user_badges WHERE user_id = %s AND badge_id = %s",
+                    (user_id, badge_level),
+                    fetch_one=True
                 )
-                badges_awarded.append(badge_level)
+                if not result:
+                    # Award badge
+                    execute_query(
+                        "INSERT INTO user_badges (user_id, badge_id, earned_at) "
+                        "VALUES (%s, %s, %s)",
+                        (user_id, badge_level, datetime.now(timezone.utc))
+                    )
+                    badges_awarded.append(badge_level)
 
-    # Return information about points and any new badges
-    return {
-        'total_points': total_points,
-        'badges_awarded': badges_awarded
-    }
+        # Update leaderboard if user has an employer
+        user = get_user_by_id(user_id)
+        if user and user.get('employer_id'):
+            update_leaderboard(user_id, user['employer_id'])
 
+        # Return information about points and any new badges
+        return {
+            'total_points': total_points,
+            'badges_awarded': badges_awarded
+        }
+
+    except Exception as e:
+        app.logger.error(f"Error awarding points to user {user_id}: {str(e)}")
+        raise  # Re-raise the exception to be handled by the calling function
 def generate_certificate_pdf(certificate_data, preview=False):
     """Generate a PDF certificate based on the certificate data"""
     buffer = BytesIO()
@@ -398,7 +407,7 @@ def generate_certificate_pdf(certificate_data, preview=False):
         if os.path.exists(logo_path):
             logo = Image(logo_path, width=2*inch, height=1*inch)
             elements.append(logo)
-    except:
+    except Exception:
         pass
 
     # Title
@@ -448,75 +457,98 @@ def generate_certificate_pdf(certificate_data, preview=False):
 
     buffer.seek(0)
     return buffer
-
 def update_leaderboard(user_id, employer_id):
-    """Update the leaderboard with user's current stats including quiz performance"""
-    if not employer_id:
-        return  # Skip if user has no employer
-    
-    # Get user's current points
-    result = execute_query(
-        "SELECT COALESCE(SUM(points), 0) as total_points FROM user_points WHERE user_id = %s",
-        (user_id,),
-        fetch_one=True
-    )
-    total_points = result['total_points']
+    """Debuggable version of leaderboard update"""
+    try:
+        app.logger.info(f"Attempting leaderboard update for user {user_id} with employer {employer_id}")
+        
+        if not employer_id:
+            app.logger.warning("No employer_id - skipping leaderboard update")
+            return
 
-    # Get badge count
-    result = execute_query(
-        "SELECT COUNT(*) as badges_count FROM user_badges WHERE user_id = %s",
-        (user_id,),
-        fetch_one=True
-    )
-    badges_count = result['badges_count']
+        # Get user's current points (with debug logging)
+        points_query = """
+            SELECT COALESCE(SUM(points), 0) as total_points 
+            FROM user_points 
+            WHERE user_id = %s
+        """
+        points_result = execute_query(points_query, (user_id,), fetch_one=True)
+        total_points = points_result['total_points'] if points_result else 0
+        app.logger.info(f"Total points for user {user_id}: {total_points}")
 
-    # Get modules completed (count distinct modules where all content is completed)
-    modules_completed = execute_query(
-        "SELECT COUNT(DISTINCT m.id) as count FROM modules m "
-        "JOIN module_content mc ON m.id = mc.module_id "
-        "LEFT JOIN user_progress up ON (mc.id = up.content_id AND up.user_id = %s AND up.status = 'completed') "
-        "GROUP BY m.id "
-        "HAVING COUNT(mc.id) = SUM(CASE WHEN up.status = 'completed' THEN 1 ELSE 0 END)",
-        (user_id,),
-        fetch_all=True
-    )
-    modules_completed = len(modules_completed) if modules_completed else 0
+        # Get badge count
+        badges_result = execute_query(
+            "SELECT COUNT(*) as badges_count FROM user_badges WHERE user_id = %s",
+            (user_id,),
+            fetch_one=True
+        )
+        badges_count = badges_result['badges_count'] if badges_result else 0
+        app.logger.info(f"Badge count for user {user_id}: {badges_count}")
 
-    # Get quiz performance stats
-    quiz_stats = execute_query(
-        "SELECT "
-        "COUNT(DISTINCT quiz_id) as quizzes_taken, "
-        "COUNT(DISTINCT CASE WHEN passed = TRUE THEN quiz_id END) as quizzes_passed, "
-        "AVG(CASE WHEN passed = TRUE THEN percentage END) as avg_quiz_score "
-        "FROM quiz_results "
-        "WHERE user_id = %s",
-        (user_id,),
-        fetch_one=True
-    ) or {
-        'quizzes_taken': 0,
-        'quizzes_passed': 0,
-        'avg_quiz_score': 0
-    }
+        # Get modules completed
+        modules_completed = execute_query(
+            "SELECT COUNT(DISTINCT m.id) as count FROM modules m "
+            "JOIN module_content mc ON m.id = mc.module_id "
+            "LEFT JOIN user_progress up ON (mc.id = up.content_id AND up.user_id = %s AND up.status = 'completed') "
+            "GROUP BY m.id "
+            "HAVING COUNT(mc.id) = SUM(CASE WHEN up.status = 'completed' THEN 1 ELSE 0 END)",
+            (user_id,),
+            fetch_all=True
+        )
+        modules_completed = len(modules_completed) if modules_completed else 0
+        app.logger.info(f"Modules completed for user {user_id}: {modules_completed}")
 
-    # Update or insert leaderboard entry
-    execute_query(
-        "INSERT INTO leaderboard (user_id, employer_id, total_points, badges_count, "
-        "modules_completed, quizzes_taken, quizzes_passed, avg_quiz_score, last_updated) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-        "ON DUPLICATE KEY UPDATE "
-        "total_points = VALUES(total_points), "
-        "badges_count = VALUES(badges_count), "
-        "modules_completed = VALUES(modules_completed), "
-        "quizzes_taken = VALUES(quizzes_taken), "
-        "quizzes_passed = VALUES(quizzes_passed), "
-        "avg_quiz_score = VALUES(avg_quiz_score), "
-        "last_updated = VALUES(last_updated)",
-        (
+        # Get quiz stats
+        quiz_stats = execute_query(
+            "SELECT "
+            "COUNT(DISTINCT quiz_id) as quizzes_taken, "
+            "COUNT(DISTINCT CASE WHEN passed = TRUE THEN quiz_id END) as quizzes_passed, "
+            "AVG(CASE WHEN passed = TRUE THEN percentage END) as avg_quiz_score "
+            "FROM quiz_results "
+            "WHERE user_id = %s",
+            (user_id,),
+            fetch_one=True
+        ) or {
+            'quizzes_taken': 0,
+            'quizzes_passed': 0,
+            'avg_quiz_score': 0
+        }
+        app.logger.info(f"Quiz stats for user {user_id}: {quiz_stats}")
+
+        # UPSERT into leaderboard
+        upsert_query = """
+            INSERT INTO leaderboard (user_id, employer_id, total_points, badges_count, 
+            modules_completed, quizzes_taken, quizzes_passed, avg_quiz_score, last_updated) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                total_points = VALUES(total_points),
+                badges_count = VALUES(badges_count),
+                modules_completed = VALUES(modules_completed),
+                quizzes_taken = VALUES(quizzes_taken),
+                quizzes_passed = VALUES(quizzes_passed),
+                avg_quiz_score = VALUES(avg_quiz_score),
+                last_updated = VALUES(last_updated)
+        """
+        params = (
             user_id, employer_id, total_points, badges_count, modules_completed,
             quiz_stats['quizzes_taken'], quiz_stats['quizzes_passed'],
             quiz_stats['avg_quiz_score'], datetime.now(timezone.utc)
         )
-    )
+
+        app.logger.info(f"Executing UPSERT with params: {params}")
+        result = execute_query(upsert_query, params)
+        app.logger.info(f"UPSERT result: {result}")
+
+        # Verify the update
+        verify_query = "SELECT * FROM leaderboard WHERE user_id = %s AND employer_id = %s"
+        verification = execute_query(verify_query, (user_id, employer_id), fetch_one=True)
+        app.logger.info(f"Verification result: {verification}")
+
+        return verification
+
+    except Exception as e:
+        app.logger.error(f"Error in update_leaderboard: {str(e)}", exc_info=True)
+        raise
 def get_user_by_id(user_id):
     user = execute_query(
         "SELECT id, email, first_name, last_name, role, password_hash, is_active, employer_id, department_id FROM users WHERE id = %s",
@@ -545,26 +577,21 @@ def get_user_by_email(email):
         return dict_to_json_serializable(user)
     return None
 
-
-@app.route('/leaderboard/initialize', methods=['POST'])
+@app.route('/leaderboard/debug', methods=['GET'])
 @token_required
-@admin_required
-def initialize_leaderboard(current_user):
-    """Initialize leaderboard data for all users with employers"""
+def debug_leaderboard(current_user):
+    """Debug endpoint to test leaderboard updates"""
     try:
-        # Get all users with employer_id
-        users = execute_query(
-            "SELECT id, employer_id FROM users WHERE employer_id IS NOT NULL",
-            fetch_all=True
-        )
-        
-        for user in users:
-            update_leaderboard(user['id'], user['employer_id'])
-            
-        return jsonify({'message': f'Leaderboard initialized for {len(users)} users'}), 200
+        if current_user.get('employer_id'):
+            update_leaderboard(current_user['id'], current_user['employer_id'])
+            return jsonify({
+                'status': 'update_leaderboard called',
+                'user_id': current_user['id'],
+                'employer_id': current_user['employer_id']
+            })
+        return jsonify({'status': 'no employer_id'})
     except Exception as e:
-        app.logger.error(f"Error initializing leaderboard: {str(e)}")
-        return jsonify({'message': 'Error initializing leaderboard'}), 500
+        return jsonify({'error': str(e)}), 500
         
 @app.route('/register', methods=['POST', 'OPTIONS'])
 def register():
@@ -1485,7 +1512,6 @@ def complete_content(current_user, content_id):
     except Exception as e:
         app.logger.error(f"Error completing content: {str(e)}")
         return jsonify({'message': 'Error completing content'}), 500
-
 @app.route('/modules/<int:module_id>/quiz/attempt', methods=['POST'])
 @token_required
 def attempt_module_quiz(current_user, module_id):
@@ -1635,15 +1661,15 @@ def submit_module_quiz(current_user, module_id):
         total_score = 0
         max_score = sum(q['points'] for q in questions)
         correct_answers = {}
-        user_answers = data['answers'];
+        user_answers = data['answers']
 
         for question in questions:
-            correct_answers[str(question['id'])] = question['correct_answer'];
+            correct_answers[str(question['id'])] = question['correct_answer']
             if str(question['id']) in user_answers and user_answers[str(question['id'])] == question['correct_answer']:
-                total_score += question['points'];
+                total_score += question['points']
 
-        percentage = (total_score / max_score) * 100 if max_score > 0 else 0;
-        passed = percentage >= quiz['passing_score'];
+        percentage = (total_score / max_score) * 100 if max_score > 0 else 0
+        passed = percentage >= quiz['passing_score']
 
         # Save quiz result
         execute_query(
@@ -1655,7 +1681,7 @@ def submit_module_quiz(current_user, module_id):
                 percentage, passed, json.dumps(user_answers), json.dumps(correct_answers),
                 datetime.now(timezone.utc)
             )
-        );
+        )
 
         response = {
             'message': 'Quiz submitted successfully',
@@ -1666,7 +1692,7 @@ def submit_module_quiz(current_user, module_id):
             'passed': passed,
             'badges_awarded': [],
             'points_awarded': 0
-        };
+        }
 
         if passed:
             # Award points for passing the quiz
@@ -1674,28 +1700,31 @@ def submit_module_quiz(current_user, module_id):
                 current_user['id'],
                 app.config['POINTS_FOR_QUIZ'],
                 f"Passed quiz for module {module_id} with score {percentage}%"
-            );
-            response['points_awarded'] = app.config['POINTS_FOR_QUIZ'];
+            )
+            response['points_awarded'] = app.config['POINTS_FOR_QUIZ']
             
             if points_result.get('badges_awarded'):
-                response['badges_awarded'] = points_result['badges_awarded'];
+                response['badges_awarded'] = points_result['badges_awarded']
 
             # Check for quiz-specific badges
-            quiz_badges = check_quiz_badges(current_user['id'], quiz['id'], percentage);
+            quiz_badges = check_quiz_badges(current_user['id'], quiz['id'], percentage)
             if quiz_badges:
-                response['badges_awarded'].extend(quiz_badges);
+                if 'badges_awarded' not in response:
+                    response['badges_awarded'] = []
+                response['badges_awarded'].extend(quiz_badges)
             
             # Update leaderboard if user has an employer
             if current_user.get('employer_id'):
-                update_leaderboard(current_user['id'], current_user['employer_id']);
-                response['leaderboard_update'] = True;
+                update_leaderboard(current_user['id'], current_user['employer_id'])
+        else:
+            # Allow retaking the quiz if failed
+            response['message'] = 'Quiz submitted but not passed - you can retake it'
 
-        return jsonify(response), 200;
+        return jsonify(response), 200
 
     except Exception as e:
-        app.logger.error(f"Error submitting module quiz: {str(e)}");
-        return jsonify({'message': 'Error submitting quiz'}), 500;
-
+        app.logger.error(f"Error submitting module quiz: {str(e)}")
+        return jsonify({'message': 'Error submitting quiz'}), 500
 @app.route('/modules/<int:module_id>/next', methods=['GET'])
 @token_required
 def get_next_module(current_user, module_id):
@@ -1854,7 +1883,7 @@ def add_content_question(current_user, content_id):
             'message': 'Successfully added question',
             'content_id': content_id
         }), 201
-        
+
     except Exception as e:
         app.logger.error(f"Error adding question to content {content_id}: {str(e)}", exc_info=True)
         return jsonify({'message': 'Error adding question'}), 500
@@ -2179,7 +2208,6 @@ def generate_trainer_reports(current_user):
             return jsonify({'message': 'Invalid time range'}), 400
 
         time_delta = time_ranges[time_range]
-        start_date = datetime.now(timezone.utc) - time_delta if time_delta else None
 
         reports = {}
 
@@ -3086,277 +3114,203 @@ def get_earned_badges(current_user):
     )
 
     return jsonify(dict_to_json_serializable(badges))
-
 @app.route('/badges/award', methods=['POST'])
 @token_required
 @trainer_required
 def award_badge(current_user):
-    data = request.get_json()
-    required_fields = ['user_id', 'badge_id']
-    if not all(field in data for field in required_fields):
-        return jsonify({'message': 'User ID and Badge ID are required'}), 400
+    """Award a badge to a learner"""
+    try:
+        data = request.get_json()
+        required_fields = ['user_id', 'badge_id']
+        if not all(field in data for field in required_fields):
+            return jsonify({'message': 'User ID and Badge ID are required'}), 400
 
-    result = execute_query(
-        "SELECT 1 FROM badges WHERE id = %s",
-        (data['badge_id'],),
-        fetch_one=True
-    )
-    if not result:
-        return jsonify({'message': 'Badge not found'}), 404
+        # Verify badge exists
+        badge = execute_query(
+            "SELECT * FROM badges WHERE id = %s",
+            (data['badge_id'],),
+            fetch_one=True
+        )
+        if not badge:
+            return jsonify({'message': 'Badge not found'}), 404
 
-    result = execute_query(
-        "SELECT 1 FROM user_badges WHERE user_id = %s AND badge_id = %s",
-        (data['user_id'], data['badge_id']),
-        fetch_one=True
-    )
-    if result:
-        return jsonify({'message': 'User already has this badge'}), 400
+        # Check if user already has this badge
+        existing_badge = execute_query(
+            "SELECT * FROM user_badges WHERE user_id = %s AND badge_id = %s",
+            (data['user_id'], data['badge_id']),
+            fetch_one=True
+        )
+        if existing_badge:
+            return jsonify({'message': 'User already has this badge'}), 400
 
-    execute_query(
-        "INSERT INTO user_badges (user_id, badge_id, earned_at) "
-        "VALUES (%s, %s, %s)",
-        (data['user_id'], data['badge_id'], datetime.now(timezone.utc))
-    )
+        # Award the badge
+        execute_query(
+            "INSERT INTO user_badges (user_id, badge_id, earned_at) "
+            "VALUES (%s, %s, %s)",
+            (data['user_id'], data['badge_id'], datetime.now(timezone.utc))
+        )
+        
+        # Update leaderboard
+        user = get_user_by_id(data['user_id'])
+        if user and user.get('employer_id'):
+            update_leaderboard(user['id'], user['employer_id'])
 
-    badge = execute_query(
-        "SELECT name, description FROM badges WHERE id = %s",
-        (data['badge_id'],),
-        fetch_one=True
-    )
+        # Get user details for notification
+        user_details = execute_query(
+            "SELECT email, first_name FROM users WHERE id = %s",
+            (data['user_id'],),
+            fetch_one=True
+        )
 
-    user = execute_query(
-        "SELECT email, first_name FROM users WHERE id = %s",
-        (data['user_id'],),
-        fetch_one=True
-    )
+        # Send notification
+        notification_template = f"""
+            <h1>Congratulations! You Earned a Badge</h1>
+            <p>Dear {user_details['first_name']},</p>
+            <p>You have been awarded the <strong>{badge['name']}</strong> badge!</p>
+            <p>{badge['description']}</p>
+            <p>Keep up the great work!</p>
+            <p>Best regards,<br>Hospitality Training Team</p>
+        """
+        send_email(user_details['email'], f"New Badge: {badge['name']}", notification_template)
 
-    notification_template = f"""
-        <h1>Congratulations! You Earned a Badge</h1>
-        <p>Dear {user['first_name']},</p>
-        <p>You have been awarded the <strong>{badge['name']}</strong> badge!</p>
-        <p>{badge['description']}</p>
-        <p>Keep up the great work!</p>
-        <p>Best regards,<br>Hospitality Training Team</p>
-    """
-    send_email(user['email'], f"New Badge: {badge['name']}", notification_template)
+        return jsonify({
+            'message': 'Badge awarded successfully',
+            'badge_id': data['badge_id'],
+            'user_id': data['user_id']
+        }), 201
 
-    return jsonify({'message': 'Badge awarded successfully'})
-
+    except Exception as e:
+        app.logger.error(f"Error awarding badge: {str(e)}")
+        return jsonify({'message': 'Error awarding badge'}), 500
 @app.route('/leaderboard', methods=['GET'])
 @token_required
 def get_leaderboard(current_user):
-    """
-    Get leaderboard data with filtering and sorting options
-    Parameters:
-    - timeRange: all, week, month, quarter (default: all)
-    - sortBy: points, modules, quizzes, badges (default: points)
-    - limit: number of entries to return (default: 100)
-    """
+    """Get leaderboard data for all users within the same employer"""
     try:
-        # Get and validate query parameters
-        time_range = request.args.get('timeRange', 'all')
-        sort_by = request.args.get('sortBy', 'points')
-        limit = int(request.args.get('limit', 100))
+        # Get query parameters
+        limit = int(request.args.get('limit', 10))
+        period = request.args.get('period', 'all')  # 'all', 'monthly', 'weekly'
+        employer_id = current_user.get('employer_id')
 
-        # Validate parameters
-        valid_time_ranges = ['all', 'week', 'month', 'quarter']
-        if time_range not in valid_time_ranges:
+        if not employer_id:
             return jsonify({
-                'message': 'Invalid time range',
-                'valid_options': valid_time_ranges
-            }), 400
+                'message': 'You need to be associated with an employer to view the leaderboard',
+                'leaderboard': [],
+                'user_stats': None
+            }), 200
 
-        valid_sort_by = ['points', 'modules', 'quizzes', 'badges']
-        if sort_by not in valid_sort_by:
-            return jsonify({
-                'message': 'Invalid sort parameter',
-                'valid_options': valid_sort_by
-            }), 400
-
-        if limit <= 0 or limit > 1000:
-            return jsonify({
-                'message': 'Limit must be between 1 and 1000'
-            }), 400
-
-        # Calculate date filter
-        date_filters = {
-            'all': "",
-            'week': "AND up.awarded_at >= DATE_SUB(NOW(), INTERVAL 1 WEEK)",
-            'month': "AND up.awarded_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)",
-            'quarter': "AND up.awarded_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)"
-        }
-        date_filter = date_filters[time_range]
-
-        # Base query - optimized with subqueries
-        query = f"""
+        # Base query for leaderboard
+        query = """
             SELECT 
                 u.id,
                 u.first_name,
                 u.last_name,
-                u.email,
                 u.profile_picture,
-                COALESCE((
-                    SELECT SUM(points) 
-                    FROM user_points up 
-                    WHERE up.user_id = u.id
-                    {date_filter}
-                ), 0) AS total_points,
-                (
-                    SELECT COUNT(DISTINCT m.id)
-                    FROM modules m
-                    JOIN module_content mc ON m.id = mc.module_id
-                    JOIN user_progress up ON mc.id = up.content_id
-                    WHERE up.user_id = u.id AND up.status = 'completed'
-                ) AS modules_completed,
-                (
-                    SELECT COUNT(DISTINCT qr.quiz_id)
-                    FROM quiz_results qr
-                    WHERE qr.user_id = u.id
-                    {date_filter if time_range != 'all' else ''}
-                ) AS quizzes_taken,
-                (
-                    SELECT COUNT(DISTINCT qr.quiz_id)
-                    FROM quiz_results qr
-                    WHERE qr.user_id = u.id AND qr.passed = TRUE
-                    {date_filter if time_range != 'all' else ''}
-                ) AS quizzes_passed,
-                (
-                    SELECT COUNT(DISTINCT ub.badge_id)
-                    FROM user_badges ub
-                    WHERE ub.user_id = u.id
-                    {date_filter if time_range != 'all' else ''}
-                ) AS badges_count
+                COALESCE(l.total_points, 0) as total_points,
+                COALESCE(l.badges_count, 0) as badges_count,
+                COALESCE(l.modules_completed, 0) as modules_completed,
+                COALESCE(l.quizzes_taken, 0) as quizzes_taken,
+                COALESCE(l.quizzes_passed, 0) as quizzes_passed,
+                COALESCE(l.avg_quiz_score, 0) as avg_quiz_score,
+                RANK() OVER (ORDER BY COALESCE(l.total_points, 0) DESC) as rank
             FROM users u
-            WHERE u.role = 'user'
+            LEFT JOIN leaderboard l ON u.id = l.user_id
+            WHERE l.employer_id = %s
         """
-
-        # Add employer filter if user belongs to one
-        params = []
-        if current_user.get('employer_id'):
-            query += " AND u.employer_id = %s"
-            params.append(current_user['employer_id'])
-
-        # Add sorting
-        sort_clauses = {
-            'points': "total_points DESC",
-            'modules': "modules_completed DESC",
-            'quizzes': "quizzes_passed DESC",
-            'badges': "badges_count DESC"
-        }
-        query += f" ORDER BY {sort_clauses[sort_by]}"
-
-        # Add limit
-        query += " LIMIT %s"
+        
+        params = [employer_id]
+        
+        # Apply time period filter
+        if period == 'monthly':
+            query += " AND l.last_updated >= %s"
+            params.append(datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+        elif period == 'weekly':
+            query += " AND l.last_updated >= %s"
+            params.append(datetime.now(timezone.utc) - timedelta(days=datetime.now(timezone.utc).weekday()))
+            
+        query += """
+            ORDER BY total_points DESC, badges_count DESC
+            LIMIT %s
+        """
         params.append(limit)
-
-        # Execute query
-        leaderboard_data = execute_query(query, params or None, fetch_all=True)
-
-        # Calculate ranks (handling ties properly)
-        ranked_data = []
-        current_rank = 1
-        prev_score = None
-        skip = 0
-
-        for i, entry in enumerate(leaderboard_data):
-            # Determine current score based on sort criteria
-            current_score = (
-                entry['total_points'] if sort_by == 'points' else
-                entry['modules_completed'] if sort_by == 'modules' else
-                entry['quizzes_passed'] if sort_by == 'quizzes' else
-                entry['badges_count']
+        
+        leaderboard = execute_query(query, params, fetch_all=True) or []
+        
+        # Get current user's rank and stats if they're in the same employer group
+        user_stats = None
+        if employer_id:
+            user_stats = execute_query(
+                """
+                WITH ranked_users AS (
+                    SELECT 
+                        u.id,
+                        u.first_name,
+                        u.last_name,
+                        u.profile_picture,
+                        COALESCE(l.total_points, 0) as total_points,
+                        COALESCE(l.badges_count, 0) as badges_count,
+                        COALESCE(l.modules_completed, 0) as modules_completed,
+                        COALESCE(l.quizzes_taken, 0) as quizzes_taken,
+                        COALESCE(l.quizzes_passed, 0) as quizzes_passed,
+                        COALESCE(l.avg_quiz_score, 0) as avg_quiz_score,
+                        RANK() OVER (ORDER BY COALESCE(l.total_points, 0) DESC) as rank
+                    FROM users u
+                    LEFT JOIN leaderboard l ON u.id = l.user_id
+                    WHERE l.employer_id = %s
+                )
+                SELECT * FROM ranked_users WHERE id = %s
+                """,
+                (employer_id, current_user['id']),
+                fetch_one=True
             )
 
-            # Handle ranking (same score gets same rank)
-            if prev_score is not None and current_score != prev_score:
-                current_rank += 1 + skip
-                skip = 0
-            elif prev_score is not None and current_score == prev_score:
-                skip += 1
-
-            ranked_entry = {
-                **entry,
-                'rank': current_rank
-            }
-            ranked_data.append(ranked_entry)
-            prev_score = current_score
-
-        # Get current user's position if not in top results
-        current_user_entry = None
-        if current_user.get('employer_id'):
-            user_query = f"""
-                SELECT * FROM (
-                    {query.replace('LIMIT %s', '')}
-                ) AS ranked_users
-                WHERE id = %s
-            """
-            user_params = params[:-1] + [current_user['id']]  # Remove limit param
-            current_user_entry = execute_query(user_query, user_params, fetch_one=True)
-
-            if current_user_entry:
-                # Need to calculate rank for this specific user
-                rank_query = f"""
-                    SELECT COUNT(*) + 1 AS rank
-                    FROM (
-                        SELECT 
-                            COALESCE(SUM(points), 0) AS user_score
-                        FROM user_points
-                        WHERE user_id = %s
-                        {date_filter}
-                    ) AS user_scores,
-                    (
-                        SELECT 
-                            u.id,
-                            COALESCE(SUM(up.points), 0) AS total_points
-                        FROM users u
-                        LEFT JOIN user_points up ON u.id = up.user_id
-                        WHERE u.role = 'user' AND u.employer_id = %s
-                        {date_filter}
-                        GROUP BY u.id
-                        HAVING COALESCE(SUM(up.points), 0) > %s
-                    ) AS better_scores
-                """
-                rank_params = [
-                    current_user['id'],
-                    current_user['employer_id'],
-                    current_user_entry['total_points']
-                ]
-                rank_result = execute_query(rank_query, rank_params, fetch_one=True)
-                current_user_entry['rank'] = rank_result['rank'] if rank_result else len(ranked_data) + 1
-
-        # Calculate stats
-        stats = {
-            'total_users': len(ranked_data),
-            'average_points': 0,
-            'top_score': 0
+        # Format the response data
+        response_data = {
+            'leaderboard': dict_to_json_serializable(leaderboard),
+            'user_stats': dict_to_json_serializable(user_stats) if user_stats else None
         }
 
-        if ranked_data:
-            total_points = sum(entry['total_points'] for entry in ranked_data)
-            stats['average_points'] = round(total_points / len(ranked_data), 1)
-            stats['top_score'] = ranked_data[0]['total_points']
-
-        return jsonify({
-            'leaderboard': dict_to_json_serializable(ranked_data),
-            'current_user_entry': dict_to_json_serializable(current_user_entry),
-            'stats': stats,
-            'time_range': time_range,
-            'sort_by': sort_by,
-            'limit': limit
-        })
+        return jsonify(response_data), 200
 
     except ValueError as e:
-        app.logger.error(f"Invalid request parameters: {str(e)}")
+        app.logger.error(f"Invalid request parameter: {str(e)}")
         return jsonify({
-            'message': 'Invalid request parameters',
+            'message': 'Invalid request parameter',
             'error': str(e)
         }), 400
+
     except Exception as e:
         app.logger.error(f"Error fetching leaderboard: {str(e)}", exc_info=True)
         return jsonify({
-            'message': 'Failed to fetch leaderboard data',
+            'message': 'Error fetching leaderboard',
             'error': str(e)
-        }), 500@app.route('/modules', methods=['POST'])
+        }), 500
+@app.route('/leaderboard/initialize', methods=['POST'])
+@token_required
+@admin_required
+def initialize_leaderboard(current_user):
+    """Initialize or rebuild leaderboard data for all users with employers"""
+    try:
+        # Get all users with employer_id
+        users = execute_query(
+            "SELECT id, employer_id FROM users WHERE employer_id IS NOT NULL",
+            fetch_all=True
+        )
+        
+        for user in users:
+            update_leaderboard(user['id'], user['employer_id'])
+            
+        return jsonify({
+            'message': f'Leaderboard initialized for {len(users)} users',
+            'users_processed': len(users)
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f"Error initializing leaderboard: {str(e)}", exc_info=True)
+        return jsonify({
+            'message': 'Error initializing leaderboard',
+            'error': str(e)
+        }), 500
 @token_required
 @trainer_required
 def create_module(current_user):
@@ -3623,99 +3577,96 @@ def get_quiz(current_user, quiz_id):
         quiz['user_result'] = None
 
     return jsonify(dict_to_json_serializable(quiz))
-
 @app.route('/quizzes/<int:quiz_id>/submit', methods=['POST'])
 @token_required
 def submit_quiz(current_user, quiz_id):
-    data = request.get_json()
-    if 'answers' not in data or not isinstance(data['answers'], list):
-        return jsonify({'message': 'Answers are required'}), 400
+    """Submit quiz answers for a quiz"""
+    try:
+        data = request.get_json()
+        if 'answers' not in data or not isinstance(data['answers'], dict):
+            return jsonify({'message': 'Answers are required'}), 400
 
-    # Get quiz details
-    quiz = execute_query(
-        "SELECT * FROM quizzes WHERE id = %s AND is_active = TRUE",
-        (quiz_id,),
-        fetch_one=True
-    )
-    if not quiz:
-        return jsonify({'message': 'Quiz not found'}), 404
-
-    # Get all questions for this quiz
-    questions = execute_query(
-        "SELECT id, question_text, correct_answer, points FROM quiz_questions "
-        "WHERE quiz_id = %s",
-        (quiz_id,),
-        fetch_all=True
-    )
-
-    # Calculate score
-    total_score = 0
-    max_score = sum(q['points'] for q in questions)
-    correct_answers = {}
-    user_answers = {}
-
-    for question in questions:
-        correct_answers[str(question['id'])] = question['correct_answer']
-
-    for answer in data['answers']:
-        if 'question_id' not in answer or 'answer' not in answer:
-            return jsonify({'message': 'Invalid answer format'}), 400
-
-        question_id = str(answer['question_id'])
-        user_answer = answer['answer']
-        user_answers[question_id] = user_answer
-
-        if question_id in correct_answers and user_answer == correct_answers[question_id]:
-            total_score += next((q['points'] for q in questions if str(q['id']) == question_id), 0)
-
-    percentage = (total_score / max_score) * 100 if max_score > 0 else 0
-    passed = percentage >= quiz['passing_score']
-
-    # Save quiz result
-    execute_query(
-        "INSERT INTO quiz_results (user_id, quiz_id, score, max_score, "
-        "percentage, passed, answers, correct_answers, completed_at) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-        (
-            current_user['id'], quiz_id, total_score, max_score,
-            percentage, passed, json.dumps(user_answers), json.dumps(correct_answers),
-            datetime.now(timezone.utc)
+        # Get quiz details
+        quiz = execute_query(
+            "SELECT * FROM quizzes WHERE id = %s AND is_active = TRUE",
+            (quiz_id,),
+            fetch_one=True
         )
-    )
+        if not quiz:
+            return jsonify({'message': 'Quiz not found'}), 404
 
-    response = {
-        'message': 'Quiz submitted successfully',
-        'score': total_score,
-        'max_score': max_score,
-        'percentage': percentage,
-        'passed': passed,
-        'badges_awarded': [],
-        'leaderboard_update': False
-    }
-
-    if passed:
-        # Award points for passing the quiz
-        points_result = award_points(
-            current_user['id'],
-            app.config['POINTS_FOR_QUIZ'],
-            f"Completed quiz {quiz_id} with score {percentage}%"
+        # Get all questions for this quiz
+        questions = execute_query(
+            "SELECT id, question_text, correct_answer, points FROM quiz_questions "
+            "WHERE quiz_id = %s",
+            (quiz_id,),
+            fetch_all=True
         )
-        response['points_awarded'] = app.config['POINTS_FOR_QUIZ']
-        
-        if points_result.get('badges_awarded'):
-            response['badges_awarded'] = points_result['badges_awarded']
 
-        # Check for quiz-specific badges
-        quiz_badges = check_quiz_badges(current_user['id'], quiz_id, percentage)
-        if quiz_badges:
-            response['badges_awarded'].extend(quiz_badges)
-        
-        # Update leaderboard if user has an employer
-        if current_user.get('employer_id'):
-            update_leaderboard(current_user['id'], current_user['employer_id'])
-            response['leaderboard_update'] = True
+        # Calculate score
+        total_score = 0
+        max_score = sum(q['points'] for q in questions)
+        correct_answers = {}
+        user_answers = data['answers']
 
-    return jsonify(response)
+        for question in questions:
+            correct_answers[str(question['id'])] = question['correct_answer']
+            if str(question['id']) in user_answers and user_answers[str(question['id'])] == question['correct_answer']:
+                total_score += question['points']
+
+        percentage = (total_score / max_score) * 100 if max_score > 0 else 0
+        passed = percentage >= quiz['passing_score']
+
+        # Save quiz result
+        execute_query(
+            "INSERT INTO quiz_results (user_id, quiz_id, score, max_score, "
+            "percentage, passed, answers, correct_answers, completed_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                current_user['id'], quiz['id'], total_score, max_score,
+                percentage, passed, json.dumps(user_answers), json.dumps(correct_answers),
+                datetime.now(timezone.utc)
+            )
+        )
+
+        response = {
+            'message': 'Quiz submitted successfully',
+            'quiz_id': quiz['id'],
+            'score': total_score,
+            'max_score': max_score,
+            'percentage': percentage,
+            'passed': passed,
+            'badges_awarded': [],
+            'points_awarded': 0
+        }
+
+        if passed:
+            # Award points for passing the quiz
+            points_result = award_points(
+                current_user['id'],
+                app.config['POINTS_FOR_QUIZ'],
+                f"Passed quiz {quiz_id} with score {percentage}%"
+            )
+            response['points_awarded'] = app.config['POINTS_FOR_QUIZ']
+            
+            if points_result.get('badges_awarded'):
+                response['badges_awarded'] = points_result['badges_awarded']
+
+            # Check for quiz-specific badges
+            quiz_badges = check_quiz_badges(current_user['id'], quiz['id'], percentage)
+            if quiz_badges:
+                response['badges_awarded'].extend(quiz_badges)
+            
+            # Update leaderboard if user has an employer
+            if current_user.get('employer_id'):
+                update_leaderboard(current_user['id'], current_user['employer_id'])
+                response['leaderboard_update'] = True
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        app.logger.error(f"Error submitting quiz: {str(e)}")
+        return jsonify({'message': 'Error submitting quiz'}), 500
 @app.route('/notifications', methods=['GET'])
 @token_required
 def get_notifications(current_user):
