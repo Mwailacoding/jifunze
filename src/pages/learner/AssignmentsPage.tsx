@@ -14,7 +14,7 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../utils/api';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
-import { Assignment } from '../../types';
+import { Assignment } from '../../types/index';
 
 export const AssignmentsPage: React.FC = () => {
   const { showError } = useNotification();

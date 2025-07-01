@@ -99,8 +99,8 @@ export interface QuizResult {
 }
 
 export interface Assignment {
-  id: number;
-  module_id: number;
+  id: number | string; // Made optional
+  module_id: number | string; // Made optional
   assigned_by?: number; // Made optional
   assignment_type?: 'individual' | 'department' | 'all'; // Made optional
   individual_id?: number;

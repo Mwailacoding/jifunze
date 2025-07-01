@@ -213,7 +213,7 @@ export const QuizPage: React.FC = () => {
           </h3>
           <Button 
             onClick={() => navigate(-1)} 
-            variant="primary"
+            variant="default"
           >
             Go Back
           </Button>
@@ -273,7 +273,7 @@ export const QuizPage: React.FC = () => {
             <div className="flex justify-center space-x-4">
               <Button
                 onClick={handleContinueLearning}
-                variant="primary"
+                variant="default"
               >
                 Continue Learning
               </Button>
@@ -469,7 +469,7 @@ export const QuizPage: React.FC = () => {
 
               <Button
                 onClick={() => handleSubmitQuiz()}
-                variant="primary"
+                variant="default"
                 disabled={isSubmitting}
                 className="w-full"
               >
@@ -582,7 +582,7 @@ export const QuizPage: React.FC = () => {
               {currentQuestionIndex < totalQuestions - 1 ? (
                 <Button
                   onClick={() => goToQuestion(currentQuestionIndex + 1)}
-                  variant="primary"
+                  variant="default"
                   className="flex items-center space-x-2"
                 >
                   <span>Next</span>
@@ -591,7 +591,7 @@ export const QuizPage: React.FC = () => {
               ) : (
                 <Button
                   onClick={() => handleSubmitQuiz()}
-                  variant="primary"
+                  variant="default"
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? <LoadingSpinner size="sm" /> : 'Submit Quiz'}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Lock, BookOpen, CheckCircle2, AlertCircle } from 'lucide-react';
-import { Button } from './ui/Button';
+import { Button } from '../../components/ui/Button';
 import { Link } from 'react-router-dom';
 
 interface ModuleLockScreenProps {
@@ -19,7 +19,7 @@ export const ModuleLockScreen: React.FC<ModuleLockScreenProps> = ({
   module,
   previousModuleId
 }) => {
-  const contentIncomplete = module.content_completed < module.content_count;
+  const contentIncomplete = (module.content_completed ?? 0) < module.content_count;
   const quizNotPassed = module.quiz_count > 0 && !module.quiz_passed;
 
   return (
@@ -64,7 +64,7 @@ export const ModuleLockScreen: React.FC<ModuleLockScreenProps> = ({
       <div className="flex flex-col sm:flex-row justify-center gap-3">
         <Button
           asChild
-          variant="primary"
+          variant="default"
         >
           <Link to={`/modules/${previousModuleId}`}>
             Return to Previous Module

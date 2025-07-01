@@ -7,7 +7,7 @@ import {
   Award,
   Download
 } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { Button } from '../../components/ui/Button';
 import { useNavigate } from 'react-router-dom';
 import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../utils/api';
@@ -116,7 +116,7 @@ export const QuizCompletionModal: React.FC<QuizCompletionModalProps> = ({
               </p>
               <Button
                 onClick={handleDownloadCertificate}
-                variant="primary"
+                variant="default"
                 className="w-full"
                 disabled={isLoading}
               >
@@ -132,7 +132,7 @@ export const QuizCompletionModal: React.FC<QuizCompletionModalProps> = ({
                 {nextModuleId ? (
                   <Button
                     onClick={handleNextModule}
-                    variant="primary"
+                    variant="default"
                     className="w-full"
                   >
                     Continue to Next Module <ChevronRight className="w-4 h-4 ml-2" />
@@ -140,7 +140,7 @@ export const QuizCompletionModal: React.FC<QuizCompletionModalProps> = ({
                 ) : (
                   <Button
                     onClick={() => navigate('/modules')}
-                    variant="primary"
+                    variant="default"
                     className="w-full"
                   >
                     Back to Modules
@@ -158,7 +158,7 @@ export const QuizCompletionModal: React.FC<QuizCompletionModalProps> = ({
               <>
                 <Button
                   onClick={handleRetakeQuiz}
-                  variant="primary"
+                  variant="default"
                   className="w-full"
                 >
                   <RotateCw className="w-4 h-4 mr-2" />

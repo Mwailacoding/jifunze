@@ -37,7 +37,7 @@ export type Module = {
   quiz_passed?: boolean;
 };
 import { useAuth } from '../../contexts/AuthContext';
-import { CertificateBadge } from '../../components/certificates/CertificateBadge';
+import CertificateBadge from '../../components/ui/CertificateBadge';
 
 export const ModulesPage: React.FC = () => {
   const { showError } = useNotification();

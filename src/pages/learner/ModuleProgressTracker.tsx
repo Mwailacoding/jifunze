@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, Circle, AlertCircle, BookOpen, Star } from 'lucide-react';
-import { ProgressBar } from './ui/ProgressBar';
+import { ProgressBar } from '../../components/ui/ProgressBar';
 
 interface ModuleProgressTrackerProps {
   module: {

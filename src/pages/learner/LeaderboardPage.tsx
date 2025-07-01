@@ -62,7 +62,7 @@ export const LeaderboardPage: React.FC = () => {
         throw new Error('Empty response from server');
       }
 
-      const sortedData = [...response.leaderboard].sort((a, b) => {
+      const sortedData = [...response].sort((a, b) => {
         switch (sortBy) {
           case 'modules':
             return b.modules_completed - a.modules_completed;
