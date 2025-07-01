@@ -12,7 +12,10 @@ import {
   Edit, 
   CircleDot as DragHandleDots2,
   CheckCircle,
-  XCircle
+  XCircle,
+  BarChart2,
+  Award,
+  RotateCw
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -40,6 +43,8 @@ interface Content {
   display_order: number;
   is_downloadable: boolean;
   questions?: Question[];
+  passing_score?: number;
+  attempts_limit?: number;
 }
 
 interface Module {
@@ -84,7 +89,9 @@ export const ModuleEditorPage: React.FC = () => {
     youtube_video_id: '',
     duration: 0,
     display_order: 1,
-    is_downloadable: false
+    is_downloadable: false,
+    passing_score: 70,
+    attempts_limit: 3
   });
 
   const [newQuestion, setNewQuestion] = useState({
@@ -168,7 +175,9 @@ export const ModuleEditorPage: React.FC = () => {
         youtube_video_id: '',
         duration: 0,
         display_order: 1,
-        is_downloadable: false
+        is_downloadable: false,
+        passing_score: 70,
+        attempts_limit: 3
       });
     } catch (error) {
       showError('Error', 'Failed to add content');
@@ -185,7 +194,9 @@ export const ModuleEditorPage: React.FC = () => {
       youtube_video_id: content.youtube_video_id,
       duration: content.duration,
       display_order: content.display_order,
-      is_downloadable: content.is_downloadable
+      is_downloadable: content.is_downloadable,
+      passing_score: content.passing_score || 70,
+      attempts_limit: content.attempts_limit || 3
     });
     setIsContentModalOpen(true);
   };
@@ -244,6 +255,24 @@ export const ModuleEditorPage: React.FC = () => {
       setCurrentQuestions(data.contents?.find((c: Content) => c.id === editingContent?.id)?.questions || []);
     } catch (error) {
       showError('Error', 'Failed to delete question');
+    }
+  };
+
+  const handleSaveQuizSettings = async () => {
+    try {
+      if (!editingContent) return;
+
+      await apiClient.put(`/content/${editingContent.id}`, {
+        passing_score: newContent.passing_score,
+        attempts_limit: newContent.attempts_limit
+      });
+
+      showSuccess('Settings Saved', 'Quiz settings updated successfully');
+      const data = await apiClient.get<Module>(`/modules/${parseInt(moduleId!)}`);
+      setContents(data.contents || []);
+      setEditingContent(data.contents?.find((c: Content) => c.id === editingContent.id) || null);
+    } catch (error) {
+      showError('Error', 'Failed to update quiz settings');
     }
   };
 
@@ -487,6 +516,12 @@ export const ModuleEditorPage: React.FC = () => {
                           {content.is_downloadable && (
                             <span className="text-primary-600">Downloadable</span>
                           )}
+                          {content.content_type === 'quiz' && (
+                            <span className="flex items-center space-x-1">
+                              <Award className="w-3 h-3" />
+                              <span>Pass: {content.passing_score || 70}%</span>
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -550,7 +585,9 @@ export const ModuleEditorPage: React.FC = () => {
             youtube_video_id: '',
             duration: 0,
             display_order: 1,
-            is_downloadable: false
+            is_downloadable: false,
+            passing_score: 70,
+            attempts_limit: 3
           });
         }}
         title={editingContent ? 'Edit Content' : 'Add New Content'}
@@ -644,6 +681,36 @@ export const ModuleEditorPage: React.FC = () => {
             />
           </div>
 
+          {newContent.content_type === 'quiz' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Passing Score (%)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={newContent.passing_score}
+                  onChange={(e) => setNewContent(prev => ({ ...prev, passing_score: parseInt(e.target.value) }))}
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Attempts Limit
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newContent.attempts_limit}
+                  onChange={(e) => setNewContent(prev => ({ ...prev, attempts_limit: parseInt(e.target.value) }))}
+                  className="input-field"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="flex items-center space-x-2">
               <input
@@ -685,6 +752,45 @@ export const ModuleEditorPage: React.FC = () => {
           size="xl"
         >
           <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-neutral-50 p-4 rounded-lg">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Passing Score (%)
+                </label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={newContent.passing_score}
+                    onChange={(e) => setNewContent(prev => ({ ...prev, passing_score: parseInt(e.target.value) }))}
+                    className="input-field w-20"
+                  />
+                  <span className="text-neutral-600">%</span>
+                </div>
+              </div>
+              <div className="bg-neutral-50 p-4 rounded-lg">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Attempts Limit
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newContent.attempts_limit}
+                  onChange={(e) => setNewContent(prev => ({ ...prev, attempts_limit: parseInt(e.target.value) }))}
+                  className="input-field w-20"
+                />
+              </div>
+              <div className="col-span-2">
+                <button
+                  onClick={handleSaveQuizSettings}
+                  className="btn-primary w-full"
+                >
+                  Save Quiz Settings
+                </button>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <h3 className="font-medium">Quiz Questions</h3>
               <button

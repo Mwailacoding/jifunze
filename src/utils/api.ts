@@ -87,6 +87,10 @@ export interface Module {
   is_active?: boolean;
   created_by?: number;
   created_at?: string;
+  completion_rate: number;
+  total_learners: number;
+  total_items: number;
+  completed_learners: number;
   completion_percentage?: number;
 }
 
