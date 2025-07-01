@@ -1,4 +1,3 @@
-
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -11,7 +10,6 @@ import { LoginForm } from './components/auth/LoginForm';
 import { RegisterForm } from './components/auth/RegisterForm';
 
 // Dashboard pages
-
 import { LearnerDashboard } from './pages/learner/LearnerDashboard';
 import { TrainerDashboard } from './pages/trainer/TrainerDashboard';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
@@ -42,6 +40,13 @@ import { ProfilePage } from './pages/shared/ProfilePage';
 import { SettingsPage } from './pages/shared/SettingsPage';
 import { LandingPage } from './pages/LandingPage';
 
+// Import the components to be integrated
+import { ContentCompletionButton } from './pages/learner/ContentCompletionButton';
+import { ModuleLockScreen } from './pages/learner/ModuleLockScreen';
+import { ModuleProgressTracker } from './pages/learner/ModuleProgressTracker';
+import { QuizCompletionModal } from './pages/learner/QuizCompletion';
+import { ContentCompletionButtonProps, ModuleLockScreenProps, ModuleProgressTrackerProps } from './types/ModuleComponents';
+
 function App() {
   return (
     <AuthProvider>
@@ -53,7 +58,6 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginForm />} />
               <Route path="/register" element={<RegisterForm />} />
-              <Route path="/quiz/:quizId" element={<QuizPage />} />
 
               {/* Protected routes */}
               <Route path="/dashboard" element={
@@ -79,7 +83,19 @@ function App() {
               } />
               <Route path="/modules/:moduleId" element={
                 <ProtectedRoute requiredRole="user">
-                  <ModuleDetailPage />
+                  <ModuleDetailPage 
+                    components={{
+                      ContentCompletionButton: ({ contentId, moduleId }: ContentCompletionButtonProps) => (
+                        <ContentCompletionButton contentId={contentId} moduleId={moduleId} />
+                      ),
+                      ModuleLockScreen: ({ module, previousModuleId }: ModuleLockScreenProps) => (
+                        <ModuleLockScreen module={module} previousModuleId={previousModuleId} />
+                      ),
+                      ModuleProgressTracker: ({ module }: ModuleProgressTrackerProps) => (
+                        <ModuleProgressTracker module={module} />
+                      )
+                    }}
+                  />
                 </ProtectedRoute>
               } />
               <Route path="/quiz/:quizId" element={
@@ -107,11 +123,6 @@ function App() {
                   <OfflineContentPage />
                 </ProtectedRoute>
               } />
-
-               <Route 
-          path="/quiz/:contentId" 
-          element={<QuizPage />} 
-        />
 
               {/* Trainer routes */}
               <Route path="/trainer/dashboard" element={

@@ -1,24 +1,17 @@
-import React, { useState } from 'react';
+import React, { FC, useState } from 'react';
 import { CheckCircle2, Loader2 } from 'lucide-react';
-import { Button } from './ui/Button';
-import { useNotification } from '../contexts/NotificationContext';
-import { apiClient } from '../utils/api';
+import { Button } from '../../components/ui/Button';
+import { useNotification } from '../../contexts/NotificationContext';
+import { apiClient } from '../../utils/apiClient'; // Corrected the path to the apiClient module
 
 interface ContentCompletionButtonProps {
-  contentId: number;
-  moduleId: number;
-  onCompleted?: () => void;
-  initialCompleted?: boolean;
+  contentId: string;
+  moduleId: string;
 }
 
-export const ContentCompletionButton: React.FC<ContentCompletionButtonProps> = ({
-  contentId,
-  moduleId,
-  onCompleted,
-  initialCompleted = false
-}) => {
+export const ContentCompletionButton: FC<ContentCompletionButtonProps> = ({ contentId, moduleId }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(initialCompleted);
+  const [isCompleted, setIsCompleted] = useState(false);
   const { showSuccess, showError } = useNotification();
 
   const handleComplete = async () => {
@@ -27,7 +20,6 @@ export const ContentCompletionButton: React.FC<ContentCompletionButtonProps> = (
       await apiClient.markContentComplete(contentId, moduleId);
       setIsCompleted(true);
       showSuccess('Completed', 'Content marked as complete');
-      if (onCompleted) onCompleted();
     } catch (error) {
       showError('Error', 'Failed to mark content as complete');
     } finally {
@@ -45,7 +37,7 @@ export const ContentCompletionButton: React.FC<ContentCompletionButtonProps> = (
       ) : (
         <Button
           onClick={handleComplete}
-          variant="primary"
+          variant="default"
           className="w-full"
           disabled={isLoading}
         >

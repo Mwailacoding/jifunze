@@ -7,7 +7,7 @@ interface ModuleLockScreenProps {
   module: {
     id: number;
     title: string;
-    content_completed: number;
+    content_completed?: number;
     content_count: number;
     quiz_passed: boolean;
     quiz_count: number;

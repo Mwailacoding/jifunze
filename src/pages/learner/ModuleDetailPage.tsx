@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, FC } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   BookOpen, 
@@ -18,6 +18,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
+import { ContentCompletionButtonProps, ModuleLockScreenProps, ModuleProgressTrackerProps } from '../../types/ModuleComponents';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../utils/api';
@@ -115,7 +116,15 @@ const transformModuleData = (apiData: any): Module => {
   };
 };
 
-export const ModuleDetailPage: React.FC = () => {
+interface ModuleDetailPageProps {
+  components: {
+    ContentCompletionButton: React.FC<ContentCompletionButtonProps>;
+    ModuleLockScreen: React.FC<ModuleLockScreenProps>;
+    ModuleProgressTracker: React.FC<ModuleProgressTrackerProps>;
+  };
+}
+
+const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
   const { moduleId } = useParams<{ moduleId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -727,3 +736,5 @@ export const ModuleDetailPage: React.FC = () => {
     </Layout>
   );
 };
+
+export { ModuleDetailPage };
