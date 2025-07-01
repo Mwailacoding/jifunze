@@ -150,7 +150,7 @@ export const QuizPage: React.FC = () => {
     const unansweredCount = quiz.questions.length - Object.keys(answers).filter(k => answers[Number(k)]).length;
     
     if (!autoSubmit && unansweredCount > 0) {
-      if (!window.confirm(You have ${unansweredCount} unanswered questions. Submit anyway?)) {
+      if (!window.confirm(`You have ${unansweredCount} unanswered questions. Submit anyway?`)) {
         return;
       }
     }
@@ -167,9 +167,9 @@ export const QuizPage: React.FC = () => {
       setShowResults(true);
       
       if (result.passed) {
-        showSuccess('Quiz Passed', You scored ${result.score}/${result.max_score} (${result.percentage}%));
+        showSuccess('Quiz Passed', `You scored ${result.score}/${result.max_score} (${result.percentage}%)`);
       } else {
-        showError('Quiz Failed', You scored ${result.score}/${result.max_score}. Need ${quiz.passing_score}% to pass.);
+        showError('Quiz Failed', `You scored ${result.score}/${result.max_score}. Need ${quiz.passing_score}% to pass.`);
       }
     } catch (error) {
       showError('Error', 'Failed to submit quiz');
@@ -191,7 +191,7 @@ export const QuizPage: React.FC = () => {
 
   const handleContinueLearning = () => {
     if (quiz?.module_id) {
-      navigate(/modules/${quiz.module_id});
+      navigate(`/modules/${quiz.module_id}`);
     } else {
       navigate('/modules');
     }
@@ -200,7 +200,7 @@ export const QuizPage: React.FC = () => {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return ${mins}:${secs.toString().padStart(2, '0')};
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (isLoading) {
@@ -533,7 +533,7 @@ export const QuizPage: React.FC = () => {
                     >
                       <input
                         type="radio"
-                        name={question-${currentQuestion.id}}
+                        name={`question-${currentQuestion.id}`}
                         value={option}
                         checked={answers[currentQuestion.id] === option}
                         onChange={() => handleAnswerChange(currentQuestion.id, option)}
@@ -556,7 +556,7 @@ export const QuizPage: React.FC = () => {
                     >
                       <input
                         type="radio"
-                        name={question-${currentQuestion.id}}
+                        name={`question-${currentQuestion.id}`}
                         value={option}
                         checked={answers[currentQuestion.id] === option}
                         onChange={() => handleAnswerChange(currentQuestion.id, option)}
