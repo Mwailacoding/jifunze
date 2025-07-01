@@ -46,60 +46,45 @@ export const LeaderboardPage: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [sortBy, setSortBy] = useState<SortBy>('points');
   const [showFilters, setShowFilters] = useState(false);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    averagePoints: 0
+  });
 
   const fetchLeaderboard = async () => {
     try {
       setIsLoading(true);
-
-      const params: Record<string, string> = {
-        timeRange: String(timeRange),
+      
+      const params = {
+        timeRange,
+        sortBy
       };
 
-      const queryParams = new URLSearchParams(params).toString();
-      const response = await apiClient.get<LeaderboardEntry[]>(`/leaderboard?${queryParams}`);
-      
+      const query = new URLSearchParams(params as Record<string, string>).toString();
+      const response = await apiClient.get<{
+        leaderboard: LeaderboardEntry[];
+        current_user_entry?: LeaderboardEntry;
+      }>(`/leaderboard?${query}`);
+
       if (!response) {
         throw new Error('Empty response from server');
       }
 
-      const sortedData = [...response].sort((a, b) => {
-        switch (sortBy) {
-          case 'modules':
-            return b.modules_completed - a.modules_completed;
-          case 'quizzes':
-            return b.quizzes_passed - a.quizzes_passed;
-          case 'badges':
-            return b.badges_count - a.badges_count;
-          case 'points':
-          default:
-            return b.total_points - a.total_points;
-        }
+      // Calculate stats
+      const totalUsers = response.leaderboard.length;
+      const averagePoints = totalUsers > 0 
+        ? parseFloat((response.leaderboard.reduce((sum, entry) => sum + entry.total_points, 0) / totalUsers).toFixed(1))
+        : 0;
+
+      setStats({
+        totalUsers,
+        averagePoints
       });
 
-      const rankedData = sortedData.map((entry, index) => ({
-        ...entry,
-        rank: index + 1,
-      }));
-
-      setLeaderboard(rankedData);
+      setLeaderboard(response.leaderboard);
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);
-
-      if (typeof error === 'object' && error !== null && 'response' in error) {
-        const err = error as { response?: { status: number } };
-        if (err.response?.status === 400) {
-          showError('Error', 'Invalid request parameters');
-        } else if (err.response?.status === 404) {
-          showError('Error', 'Leaderboard endpoint not found');
-        } else {
-          showError('Error', 'Failed to load leaderboard data');
-        }
-      } else if (typeof error === 'object' && error !== null && 'request' in error) {
-        showError('Network Error', 'Could not connect to the server');
-      } else {
-        showError('Error', 'Failed to make request');
-      }
-
+      showError('Error', 'Failed to load leaderboard data. Please try again later.');
       setLeaderboard([]);
     } finally {
       setIsLoading(false);
@@ -152,11 +137,6 @@ export const LeaderboardPage: React.FC = () => {
   const currentUserEntry = leaderboard.find(entry => entry.id === user?.id);
   const topThree = leaderboard.slice(0, 3);
   const restOfLeaderboard = leaderboard.slice(3);
-
-  const totalUsers = leaderboard.length;
-  const averagePoints = totalUsers > 0 
-    ? parseFloat((leaderboard.reduce((sum, entry) => sum + entry.total_points, 0) / totalUsers).toFixed(1))
-    : 0.0;
 
   if (isLoading) {
     return (
@@ -236,7 +216,7 @@ export const LeaderboardPage: React.FC = () => {
             <Users className="w-6 h-6 text-primary-600" />
           </div>
           <div className="text-2xl font-bold text-neutral-900 mb-1">
-            {totalUsers}
+            {stats.totalUsers}
           </div>
           <div className="text-sm text-neutral-600">Active Learners</div>
         </div>
@@ -266,7 +246,7 @@ export const LeaderboardPage: React.FC = () => {
             <Zap className="w-6 h-6 text-green-600" />
           </div>
           <div className="text-2xl font-bold text-green-600 mb-1 overflow-hidden text-ellipsis whitespace-nowrap">
-            {averagePoints}
+            {stats.averagePoints}
           </div>
           <div className="text-sm text-neutral-600">Average Points</div>
         </div>
@@ -485,15 +465,18 @@ export const LeaderboardPage: React.FC = () => {
                 </div>
               </div>
             </div>
-          ))
-          }
+          ))}
         </div>
 
         {leaderboard.length === 0 && (
           <div className="text-center py-12">
             <Trophy className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-neutral-900 mb-2">No Leaderboard Data</h3>
-            <p className="text-neutral-600">Start learning and taking quizzes to appear on the leaderboard!</p>
+            <p className="text-neutral-600">
+              {user?.employer_id 
+                ? "Start learning and taking quizzes to appear on the leaderboard!" 
+                : "Leaderboard is only available for users with an organization."}
+            </p>
           </div>
         )}
       </div>

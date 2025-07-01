@@ -544,6 +544,8 @@ def get_user_by_email(email):
             user['password_hash'] = new_hash
         return dict_to_json_serializable(user)
     return None
+
+
 @app.route('/leaderboard/initialize', methods=['POST'])
 @token_required
 @admin_required
@@ -919,6 +921,62 @@ def get_admin_dashboard_stats(current_user):
             'message': 'Error fetching dashboard statistics',
             'error': str(e)
         }), 500 
+
+@app.route('/user/<int:user_id>/certificates', methods=['GET'])
+@token_required
+def get_user_certificates(current_user, user_id):
+    # Only allow users to view their own certificates, or admins
+    if current_user['id'] != user_id and current_user['role'] != 'admin':
+        return jsonify({'message': 'Unauthorized'}), 403
+
+    certificates = execute_query(
+        "SELECT uc.id, uc.certificate_type, uc.item_id, uc.certificate_id, "
+        "uc.generated_at, "
+        "CASE "
+        "WHEN uc.certificate_type = 'module' THEN m.title "
+        "WHEN uc.certificate_type = 'quiz' THEN q.title "
+        "END as title "
+        "FROM user_certificates uc "
+        "LEFT JOIN modules m ON uc.certificate_type = 'module' AND uc.item_id = m.id "
+        "LEFT JOIN quizzes q ON uc.certificate_type = 'quiz' AND uc.item_id = q.id "
+        "WHERE uc.user_id = %s "
+        "ORDER BY uc.generated_at DESC",
+        (user_id,),
+        fetch_all=True
+    )
+
+    return jsonify(dict_to_json_serializable(certificates))
+
+@app.route('/content/<int:content_id>/download', methods=['POST'])
+@token_required
+def download_content(current_user, content_id):
+    """Allow a user to download content if available (file or video)"""
+    # Fetch content info
+    content = execute_query(
+        "SELECT * FROM module_content WHERE id = %s",
+        (content_id,),
+        fetch_one=True
+    )
+    if not content:
+        return jsonify({'message': 'Content not found'}), 404
+
+    # Check if file_path exists and is downloadable
+    if content.get('file_path'):
+        file_path = content['file_path']
+        if os.path.exists(file_path):
+            return send_file(
+                file_path,
+                as_attachment=True,
+                download_name=os.path.basename(file_path)
+            )
+        else:
+            return jsonify({'message': 'File not found on server'}), 404
+
+    # If content is a video or has a URL, return the URL
+    if content.get('url'):
+        return jsonify({'url': content['url']}), 200
+
+    return jsonify({'message': 'No downloadable file or URL for this content'}), 400
 @app.route('/refresh-token', methods=['POST'])
 def refresh_token():
     refresh_token = request.json.get('refresh_token')
@@ -1030,7 +1088,7 @@ def profile(current_user):
 
 @app.route('/profile', methods=['PUT'])
 @token_required
-def update_profile(current_user):
+def update_profile(current_user, user_id):
     data = request.get_json()
 
     update_data = {}
@@ -1577,15 +1635,15 @@ def submit_module_quiz(current_user, module_id):
         total_score = 0
         max_score = sum(q['points'] for q in questions)
         correct_answers = {}
-        user_answers = data['answers']
+        user_answers = data['answers'];
 
         for question in questions:
-            correct_answers[str(question['id'])] = question['correct_answer']
+            correct_answers[str(question['id'])] = question['correct_answer'];
             if str(question['id']) in user_answers and user_answers[str(question['id'])] == question['correct_answer']:
-                total_score += question['points']
+                total_score += question['points'];
 
-        percentage = (total_score / max_score) * 100 if max_score > 0 else 0
-        passed = percentage >= quiz['passing_score']
+        percentage = (total_score / max_score) * 100 if max_score > 0 else 0;
+        passed = percentage >= quiz['passing_score'];
 
         # Save quiz result
         execute_query(
@@ -1597,7 +1655,7 @@ def submit_module_quiz(current_user, module_id):
                 percentage, passed, json.dumps(user_answers), json.dumps(correct_answers),
                 datetime.now(timezone.utc)
             )
-        )
+        );
 
         response = {
             'message': 'Quiz submitted successfully',
@@ -1606,10 +1664,9 @@ def submit_module_quiz(current_user, module_id):
             'max_score': max_score,
             'percentage': percentage,
             'passed': passed,
-            'module_completed': passed,
             'badges_awarded': [],
             'points_awarded': 0
-        }
+        };
 
         if passed:
             # Award points for passing the quiz
@@ -1617,31 +1674,27 @@ def submit_module_quiz(current_user, module_id):
                 current_user['id'],
                 app.config['POINTS_FOR_QUIZ'],
                 f"Passed quiz for module {module_id} with score {percentage}%"
-            )
-            response['points_awarded'] = app.config['POINTS_FOR_QUIZ']
+            );
+            response['points_awarded'] = app.config['POINTS_FOR_QUIZ'];
             
             if points_result.get('badges_awarded'):
-                response['badges_awarded'] = points_result['badges_awarded']
+                response['badges_awarded'] = points_result['badges_awarded'];
 
             # Check for quiz-specific badges
-            quiz_badges = check_quiz_badges(current_user['id'], quiz['id'], percentage)
+            quiz_badges = check_quiz_badges(current_user['id'], quiz['id'], percentage);
             if quiz_badges:
-                if 'badges_awarded' not in response:
-                    response['badges_awarded'] = []
-                response['badges_awarded'].extend(quiz_badges)
+                response['badges_awarded'].extend(quiz_badges);
             
             # Update leaderboard if user has an employer
             if current_user.get('employer_id'):
-                update_leaderboard(current_user['id'], current_user['employer_id'])
-        else:
-            # Allow retaking the quiz if failed
-            response['message'] = 'Quiz submitted but not passed - you can retake it'
+                update_leaderboard(current_user['id'], current_user['employer_id']);
+                response['leaderboard_update'] = True;
 
-        return jsonify(response), 200
+        return jsonify(response), 200;
 
     except Exception as e:
-        app.logger.error(f"Error submitting module quiz: {str(e)}")
-        return jsonify({'message': 'Error submitting quiz'}), 500
+        app.logger.error(f"Error submitting module quiz: {str(e)}");
+        return jsonify({'message': 'Error submitting quiz'}), 500;
 
 @app.route('/modules/<int:module_id>/next', methods=['GET'])
 @token_required
@@ -3092,85 +3145,218 @@ def award_badge(current_user):
 @app.route('/leaderboard', methods=['GET'])
 @token_required
 def get_leaderboard(current_user):
+    """
+    Get leaderboard data with filtering and sorting options
+    Parameters:
+    - timeRange: all, week, month, quarter (default: all)
+    - sortBy: points, modules, quizzes, badges (default: points)
+    - limit: number of entries to return (default: 100)
+    """
     try:
-        # Get query parameters
-        limit = int(request.args.get('limit', 10))
-        period = request.args.get('period', 'all')  # 'all', 'monthly', 'weekly'
+        # Get and validate query parameters
+        time_range = request.args.get('timeRange', 'all')
+        sort_by = request.args.get('sortBy', 'points')
+        limit = int(request.args.get('limit', 100))
 
-        # Base query for leaderboard
-        query = """
+        # Validate parameters
+        valid_time_ranges = ['all', 'week', 'month', 'quarter']
+        if time_range not in valid_time_ranges:
+            return jsonify({
+                'message': 'Invalid time range',
+                'valid_options': valid_time_ranges
+            }), 400
+
+        valid_sort_by = ['points', 'modules', 'quizzes', 'badges']
+        if sort_by not in valid_sort_by:
+            return jsonify({
+                'message': 'Invalid sort parameter',
+                'valid_options': valid_sort_by
+            }), 400
+
+        if limit <= 0 or limit > 1000:
+            return jsonify({
+                'message': 'Limit must be between 1 and 1000'
+            }), 400
+
+        # Calculate date filter
+        date_filters = {
+            'all': "",
+            'week': "AND up.awarded_at >= DATE_SUB(NOW(), INTERVAL 1 WEEK)",
+            'month': "AND up.awarded_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)",
+            'quarter': "AND up.awarded_at >= DATE_SUB(NOW(), INTERVAL 3 MONTH)"
+        }
+        date_filter = date_filters[time_range]
+
+        # Base query - optimized with subqueries
+        query = f"""
             SELECT 
                 u.id,
                 u.first_name,
                 u.last_name,
-                COALESCE(SUM(up.points), 0) as total_points,
-                COUNT(DISTINCT ub.badge_id) as badge_count,
-                DENSE_RANK() OVER (ORDER BY COALESCE(SUM(up.points), 0) DESC) as rank
+                u.email,
+                u.profile_picture,
+                COALESCE((
+                    SELECT SUM(points) 
+                    FROM user_points up 
+                    WHERE up.user_id = u.id
+                    {date_filter}
+                ), 0) AS total_points,
+                (
+                    SELECT COUNT(DISTINCT m.id)
+                    FROM modules m
+                    JOIN module_content mc ON m.id = mc.module_id
+                    JOIN user_progress up ON mc.id = up.content_id
+                    WHERE up.user_id = u.id AND up.status = 'completed'
+                ) AS modules_completed,
+                (
+                    SELECT COUNT(DISTINCT qr.quiz_id)
+                    FROM quiz_results qr
+                    WHERE qr.user_id = u.id
+                    {date_filter if time_range != 'all' else ''}
+                ) AS quizzes_taken,
+                (
+                    SELECT COUNT(DISTINCT qr.quiz_id)
+                    FROM quiz_results qr
+                    WHERE qr.user_id = u.id AND qr.passed = TRUE
+                    {date_filter if time_range != 'all' else ''}
+                ) AS quizzes_passed,
+                (
+                    SELECT COUNT(DISTINCT ub.badge_id)
+                    FROM user_badges ub
+                    WHERE ub.user_id = u.id
+                    {date_filter if time_range != 'all' else ''}
+                ) AS badges_count
             FROM users u
-            LEFT JOIN user_points up ON u.id = up.user_id
-            LEFT JOIN user_badges ub ON u.id = ub.user_id
+            WHERE u.role = 'user'
         """
-        
-        params = []
-        
-        # Apply time period filter
-        if period == 'monthly':
-            query += " WHERE up.awarded_at >= %s"
-            params.append(datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0))
-        elif period == 'weekly':
-            query += " WHERE up.awarded_at >= %s"
-            params.append(datetime.now(timezone.utc) - timedelta(days=datetime.now(timezone.utc).weekday(), hours=0, minutes=0, seconds=0, microseconds=0))
-            
-        query += """
-            GROUP BY u.id, u.first_name, u.last_name
-            ORDER BY total_points DESC, badge_count DESC
-            LIMIT %s
-        """
-        params.append(limit)
-        
-        leaderboard = execute_query(query, params, fetch_all=True)
-        
-        # Get current user's rank and stats
-        user_stats = execute_query(
-            """
-            SELECT 
-                id,
-                first_name,
-                last_name,
-                total_points,
-                badge_count,
-                rank
-            FROM (
-                SELECT 
-                    u.id,
-                    u.first_name,
-                    u.last_name,
-                    COALESCE(SUM(up.points), 0) as total_points,
-                    COUNT(DISTINCT ub.badge_id) as badge_count,
-                    DENSE_RANK() OVER (ORDER BY COALESCE(SUM(up.points), 0) DESC) as rank
-                FROM users u
-                LEFT JOIN user_points up ON u.id = up.user_id
-                LEFT JOIN user_badges ub ON u.id = ub.user_id
-                GROUP BY u.id, u.first_name, u.last_name
-            ) ranked
-            WHERE id = %s
-            """,
-            (current_user['id'],),
-            fetch_one=True
-        )
-        print(f"Leaderboard: {leaderboard}")
-        print(f"User Stats: {user_stats}")
-        
-        return jsonify({
-            'leaderboard': dict_to_json_serializable(leaderboard),
-            'user_stats': dict_to_json_serializable(user_stats)
-        }), 200
-        
-    except Exception as e:
-        app.logger.error(f"Error fetching leaderboard: {str(e)}")
-        return jsonify({'message': 'Error fetching leaderboard'}), 500
 
-@app.route('/modules', methods=['POST'])
+        # Add employer filter if user belongs to one
+        params = []
+        if current_user.get('employer_id'):
+            query += " AND u.employer_id = %s"
+            params.append(current_user['employer_id'])
+
+        # Add sorting
+        sort_clauses = {
+            'points': "total_points DESC",
+            'modules': "modules_completed DESC",
+            'quizzes': "quizzes_passed DESC",
+            'badges': "badges_count DESC"
+        }
+        query += f" ORDER BY {sort_clauses[sort_by]}"
+
+        # Add limit
+        query += " LIMIT %s"
+        params.append(limit)
+
+        # Execute query
+        leaderboard_data = execute_query(query, params or None, fetch_all=True)
+
+        # Calculate ranks (handling ties properly)
+        ranked_data = []
+        current_rank = 1
+        prev_score = None
+        skip = 0
+
+        for i, entry in enumerate(leaderboard_data):
+            # Determine current score based on sort criteria
+            current_score = (
+                entry['total_points'] if sort_by == 'points' else
+                entry['modules_completed'] if sort_by == 'modules' else
+                entry['quizzes_passed'] if sort_by == 'quizzes' else
+                entry['badges_count']
+            )
+
+            # Handle ranking (same score gets same rank)
+            if prev_score is not None and current_score != prev_score:
+                current_rank += 1 + skip
+                skip = 0
+            elif prev_score is not None and current_score == prev_score:
+                skip += 1
+
+            ranked_entry = {
+                **entry,
+                'rank': current_rank
+            }
+            ranked_data.append(ranked_entry)
+            prev_score = current_score
+
+        # Get current user's position if not in top results
+        current_user_entry = None
+        if current_user.get('employer_id'):
+            user_query = f"""
+                SELECT * FROM (
+                    {query.replace('LIMIT %s', '')}
+                ) AS ranked_users
+                WHERE id = %s
+            """
+            user_params = params[:-1] + [current_user['id']]  # Remove limit param
+            current_user_entry = execute_query(user_query, user_params, fetch_one=True)
+
+            if current_user_entry:
+                # Need to calculate rank for this specific user
+                rank_query = f"""
+                    SELECT COUNT(*) + 1 AS rank
+                    FROM (
+                        SELECT 
+                            COALESCE(SUM(points), 0) AS user_score
+                        FROM user_points
+                        WHERE user_id = %s
+                        {date_filter}
+                    ) AS user_scores,
+                    (
+                        SELECT 
+                            u.id,
+                            COALESCE(SUM(up.points), 0) AS total_points
+                        FROM users u
+                        LEFT JOIN user_points up ON u.id = up.user_id
+                        WHERE u.role = 'user' AND u.employer_id = %s
+                        {date_filter}
+                        GROUP BY u.id
+                        HAVING COALESCE(SUM(up.points), 0) > %s
+                    ) AS better_scores
+                """
+                rank_params = [
+                    current_user['id'],
+                    current_user['employer_id'],
+                    current_user_entry['total_points']
+                ]
+                rank_result = execute_query(rank_query, rank_params, fetch_one=True)
+                current_user_entry['rank'] = rank_result['rank'] if rank_result else len(ranked_data) + 1
+
+        # Calculate stats
+        stats = {
+            'total_users': len(ranked_data),
+            'average_points': 0,
+            'top_score': 0
+        }
+
+        if ranked_data:
+            total_points = sum(entry['total_points'] for entry in ranked_data)
+            stats['average_points'] = round(total_points / len(ranked_data), 1)
+            stats['top_score'] = ranked_data[0]['total_points']
+
+        return jsonify({
+            'leaderboard': dict_to_json_serializable(ranked_data),
+            'current_user_entry': dict_to_json_serializable(current_user_entry),
+            'stats': stats,
+            'time_range': time_range,
+            'sort_by': sort_by,
+            'limit': limit
+        })
+
+    except ValueError as e:
+        app.logger.error(f"Invalid request parameters: {str(e)}")
+        return jsonify({
+            'message': 'Invalid request parameters',
+            'error': str(e)
+        }), 400
+    except Exception as e:
+        app.logger.error(f"Error fetching leaderboard: {str(e)}", exc_info=True)
+        return jsonify({
+            'message': 'Failed to fetch leaderboard data',
+            'error': str(e)
+        }), 500@app.route('/modules', methods=['POST'])
 @token_required
 @trainer_required
 def create_module(current_user):
