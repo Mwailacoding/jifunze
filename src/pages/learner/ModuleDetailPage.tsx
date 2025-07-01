@@ -192,18 +192,21 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
         setModule(updatedModule);
       }
 
-      // Check if this content has an associated quiz
-      const quiz = await apiClient.getContentQuiz(content.id);
-      if (quiz) {
-        setQuizData(quiz);
-        setShowQuiz(true);
-        
-        // Initialize answers object
-        const initialAnswers: Record<number, string> = {};
-        quiz.questions.forEach((question: any) => {
-          initialAnswers[question.id] = '';
-        });
-        setQuizAnswers(initialAnswers);
+      // Automatically check for and start quiz if this content has one
+      if (content.content_type === 'quiz') {
+        const quiz = await apiClient.getContentQuiz(content.id);
+        if (quiz) {
+          setQuizData(quiz);
+          setShowQuiz(true);
+          setIsContentModalOpen(false); // Close content modal when opening quiz
+          
+          // Initialize answers object
+          const initialAnswers: Record<number, string> = {};
+          quiz.questions.forEach((question: any) => {
+            initialAnswers[question.id] = '';
+          });
+          setQuizAnswers(initialAnswers);
+        }
       }
     } catch (error) {
       showError('Error', 'Failed to update progress');
@@ -508,14 +511,6 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
                     <span>Open Document</span>
                   </a>
                 </div>
-              ) : selectedContent.content_type === 'quiz' ? (
-                <div className="text-center">
-                  <Star className="w-16 h-16 text-accent-400 mx-auto mb-4" />
-                  <p className="text-neutral-600 mb-4">Quiz content</p>
-                  <button className="btn-primary">
-                    Start Quiz
-                  </button>
-                </div>
               ) : (
                 <div className="text-center">
                   <BookOpen className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
@@ -555,7 +550,7 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
         )}
       </Modal>
 
-      {/* Quiz Modal */}
+      {/* Quiz Modal - Automatically shown when quiz content is completed */}
       {showQuiz && quizData && (
         <Modal
           isOpen={showQuiz}
