@@ -42,7 +42,14 @@ export const QuizListPage: React.FC = () => {
           apiClient.getModule(parseInt(moduleId))
         ]);
         
-        setQuizzes(quizzesData);
+        // Transform quiz data to match expected format
+        const transformedQuizzes = quizzesData.map((quiz: any) => ({
+          ...quiz,
+          questions: quiz.questions || [],
+          user_result: quiz.user_result || null
+        }));
+        
+        setQuizzes(transformedQuizzes);
         setModule({
           ...moduleData,
           completion_percentage: moduleData.completion_percentage ?? 0
@@ -54,10 +61,9 @@ export const QuizListPage: React.FC = () => {
         setIsLoading(false);
       }
     };
-
+  
     fetchData();
   }, [moduleId, showError, navigate]);
-
   const handleStartQuiz = (quiz: Quiz) => {
     if (quiz.user_result?.passed) {
       showInfo(

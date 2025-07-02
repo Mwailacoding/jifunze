@@ -3508,7 +3508,6 @@ def get_module_quizzes(current_user, module_id):
             quiz['user_result'] = None
 
     return jsonify(dict_to_json_serializable(quizzes))
-
 @app.route('/content/<int:content_id>/quiz', methods=['GET'])
 @token_required
 def get_content_quiz(current_user, content_id):
@@ -3525,7 +3524,9 @@ def get_content_quiz(current_user, content_id):
 
         # Get quiz for this module
         quiz = execute_query(
-            "SELECT * FROM quizzes WHERE module_id = %s AND is_active = TRUE LIMIT 1",
+            "SELECT q.* FROM quizzes q "
+            "JOIN modules m ON q.module_id = m.id "
+            "WHERE q.module_id = %s AND q.is_active = TRUE LIMIT 1",
             (content['module_id'],),
             fetch_one=True
         )
@@ -3535,20 +3536,33 @@ def get_content_quiz(current_user, content_id):
 
         # Get questions for this quiz (without correct answers)
         questions = execute_query(
-            "SELECT id, question_text, options, points "
+            "SELECT id, question_text, question_type, options, points "
             "FROM quiz_questions WHERE quiz_id = %s",
             (quiz['id'],),
             fetch_all=True
         )
 
-        quiz['questions'] = questions
+        # Get user's previous result if exists
+        user_result = execute_query(
+            "SELECT score, max_score, percentage, passed, completed_at "
+            "FROM quiz_results "
+            "WHERE user_id = %s AND quiz_id = %s "
+            "ORDER BY completed_at DESC LIMIT 1",
+            (current_user['id'], quiz['id']),
+            fetch_one=True
+        )
 
-        return jsonify(dict_to_json_serializable(quiz))
+        response = {
+            'quiz': quiz,
+            'questions': questions,
+            'user_result': user_result
+        }
+
+        return jsonify(response)
 
     except Exception as e:
         app.logger.error(f"Error fetching content quiz: {str(e)}")
         return jsonify({'message': 'Error fetching quiz'}), 500
-
 @app.route('/quizzes/<int:quiz_id>', methods=['GET'])
 @token_required
 def get_quiz(current_user, quiz_id):

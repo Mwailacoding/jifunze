@@ -749,7 +749,11 @@ class ApiClient {
   }
 
   // Content Quiz endpoint
-  async getContentQuiz(contentId: number): Promise<any> {
+  async getContentQuiz(contentId: number): Promise<{
+    quiz: Quiz;
+    questions: QuizQuestion[];
+    user_result?: QuizUserResult;
+  }> {
     const response = await this.axios.get(`/content/${contentId}/quiz`);
     return response.data;
   }

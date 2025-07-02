@@ -96,28 +96,100 @@ const transformModuleData = (apiData: any): Module => ({
   name: apiData.name ?? apiData.title ?? 'Unnamed Module',
   title: apiData.title ?? 'Untitled Module',
   category: apiData.category ?? 'General',
-    difficulty_level: apiData.difficulty_level || 'beginner',
-    is_active: apiData.is_active ?? true,
-    created_by: apiData.created_by || 0,
-    created_at: apiData.created_at || new Date().toISOString(),
-    description: apiData.description,
-    estimated_duration: apiData.estimated_duration,
-    completion_percentage: apiData.completion_percentage,
-    contents: (apiData.contents || []).map((content: any) => ({
-      ...content,
-      // Ensure quizzes are properly marked
-      content_type: content.content_type === 'quiz' ? 'quiz' : content.content_type,
-      // Add quiz-specific properties if needed
-    })),
-    content_count: apiData.content_count,
-    quiz_count: apiData.quiz_count,
-    learner_count: apiData.learner_count,
-    completion_rate: apiData.completion_rate,
-    created_by_name: apiData.created_by_name,
-    user_progress: apiData.user_progress,
-    youtube_video: apiData.youtube_video,
-    offline_available: apiData.offline_available
+  difficulty_level: apiData.difficulty_level || 'beginner',
+  is_active: apiData.is_active ?? true,
+  created_by: apiData.created_by || 0,
+  created_at: apiData.created_at || new Date().toISOString(),
+  description: apiData.description,
+  estimated_duration: apiData.estimated_duration,
+  completion_percentage: apiData.completion_percentage,
+  contents: (apiData.contents || []).map((content: any) => ({
+    ...content,
+    content_type: content.content_type === 'quiz' ? 'quiz' : content.content_type,
+  })),
+  content_count: apiData.content_count,
+  quiz_count: apiData.quiz_count,
+  learner_count: apiData.learner_count,
+  completion_rate: apiData.completion_rate,
+  created_by_name: apiData.created_by_name,
+  user_progress: apiData.user_progress,
+  youtube_video: apiData.youtube_video,
+  offline_available: apiData.offline_available
 });
+
+// Implementation of the unused interfaces
+const ContentCompletionButton: FC<ContentCompletionButtonProps> = ({
+  content,
+  onComplete,
+  className = '',
+}) => {
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const handleClick = async () => {
+    setIsLoading(true);
+    try {
+      await onComplete(content);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={isLoading}
+      className={`btn-primary ${className}`}
+    >
+      {isLoading ? 'Marking...' : 'Mark as Complete'}
+    </button>
+  );
+};
+
+const ModuleLockScreen: FC<ModuleLockScreenProps> = ({
+  module,
+  onBack,
+  className = '',
+}) => {
+  return (
+    <div className={`text-center p-8 bg-neutral-50 rounded-lg ${className}`}>
+      <Lock className="w-12 h-12 mx-auto text-neutral-400 mb-4" />
+      <h3 className="text-xl font-semibold text-neutral-900 mb-2">
+        Module Locked
+      </h3>
+      <p className="text-neutral-600 mb-6">
+        You need to complete the previous module to unlock this content.
+      </p>
+      <button
+        onClick={onBack}
+        className="btn-outline"
+      >
+        Back to Modules
+      </button>
+    </div>
+  );
+};
+
+const ModuleProgressTracker: FC<ModuleProgressTrackerProps> = ({
+  completed,
+  total,
+  percentage,
+  className = '',
+}) => {
+  return (
+    <div className={`card p-6 ${className}`}>
+      <div className="text-center mb-4">
+        <div className="text-3xl font-bold text-primary-600 mb-1">
+          {percentage}%
+        </div>
+        <p className="text-neutral-600">Complete</p>
+      </div>
+      <ProgressBar value={percentage} className="mb-4" animated />
+      <p className="text-sm text-neutral-600 text-center">
+        {completed} of {total} lessons completed
+      </p>
+    </div>
+  );
+};
 
 interface ModuleDetailPageProps {
   components?: any;
@@ -176,7 +248,6 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
 
   const handleContentComplete = async (content: ModuleContent) => {
     try {
-      // Mark content as completed
       await apiClient.updateProgress({
         content_id: content.id,
         status: 'completed'
@@ -184,27 +255,33 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
       
       showSuccess('Progress Updated', 'Content marked as completed!');
       
-      // Refresh module data
       if (moduleId) {
         const apiData = await apiClient.getModule(parseInt(moduleId));
         const updatedModule = transformModuleData(apiData);
         setModule(updatedModule);
       }
 
-      // Automatically check for and start quiz if this content has one
       if (content.content_type === 'quiz') {
-        const quiz = await apiClient.getContentQuiz(content.id);
-        if (quiz) {
-          setQuizData(quiz);
-          setShowQuiz(true);
-          setIsContentModalOpen(false); // Close content modal when opening quiz
+        try {
+          const { quiz, questions, user_result } = await apiClient.getContentQuiz(content.id);
           
-          // Initialize answers object
+          setQuizData({
+            ...quiz,
+            questions,
+            user_result
+          });
+          
+          setShowQuiz(true);
+          setIsContentModalOpen(false);
+          
           const initialAnswers: Record<number, string> = {};
-          quiz.questions.forEach((question: any) => {
+          questions.forEach((question: any) => {
             initialAnswers[question.id] = '';
           });
           setQuizAnswers(initialAnswers);
+        } catch (error) {
+          console.error('Failed to load quiz:', error);
+          showError('Error', 'Failed to load quiz');
         }
       }
     } catch (error) {
@@ -247,7 +324,6 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
         showError('Quiz Failed', `You scored ${result.score}/${result.max_score}. Need ${quizData.passing_score}% to pass.`);
       }
 
-      // Refresh module data after quiz submission
       if (moduleId) {
         const apiData = await apiClient.getModule(parseInt(moduleId));
         const updatedModule = transformModuleData(apiData);
@@ -365,20 +441,12 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
             </div>
           </div>
 
-          <div className="lg:w-80">
-            <div className="card p-6">
-              <div className="text-center mb-4">
-                <div className="text-3xl font-bold text-primary-600 mb-1">
-                  {completionPercentage}%
-                </div>
-                <p className="text-neutral-600">Complete</p>
-              </div>
-              <ProgressBar value={completionPercentage} className="mb-4" animated />
-              <p className="text-sm text-neutral-600 text-center">
-                {completedContents} of {totalContents} lessons completed
-              </p>
-            </div>
-          </div>
+          <ModuleProgressTracker
+            completed={completedContents}
+            total={totalContents}
+            percentage={completionPercentage}
+            className="lg:w-80"
+          />
         </div>
       </div>
 
@@ -394,6 +462,16 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
               const isInProgress = content.user_progress?.status === 'in_progress';
               const isLocked = index > 0 && !module.contents![index - 1].user_progress?.status;
               const isQuiz = content.content_type === 'quiz';
+
+              if (isLocked) {
+                return (
+                  <ModuleLockScreen
+                    key={content.id}
+                    module={module}
+                    onBack={() => navigate('/modules')}
+                  />
+                );
+              }
 
               return (
                 <div
@@ -538,15 +616,10 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
                 </div>
                 <div className="flex space-x-3">
                   {selectedContent.user_progress?.status !== 'completed' && (
-                    <button
-                      onClick={() => {
-                        handleContentComplete(selectedContent);
-                        setIsContentModalOpen(false);
-                      }}
-                      className="btn-primary"
-                    >
-                      Mark as Complete
-                    </button>
+                    <ContentCompletionButton
+                      content={selectedContent}
+                      onComplete={handleContentComplete}
+                    />
                   )}
                   <button
                     onClick={() => setIsContentModalOpen(false)}
@@ -560,7 +633,8 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
           </div>
         )}
       </Modal>
-      {/* Quiz Modal - Automatically shown when quiz content is completed */}
+
+      {/* Quiz Modal */}
       {showQuiz && quizData && (
         <Modal
           isOpen={showQuiz}
