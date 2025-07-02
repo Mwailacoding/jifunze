@@ -118,17 +118,17 @@ const transformModuleData = (apiData: any): Module => ({
 });
 
 // Implementation of the unused interfaces
-const ContentCompletionButton: FC<ContentCompletionButtonProps> = ({
-  content,
+const ContentCompletionButton = ({
+  contentId,
+  moduleId,
   onComplete,
   className = '',
-}) => {
+}: ContentCompletionButtonProps & { onComplete: (contentId: number, moduleId: number) => Promise<void>; className?: string }) => {
   const [isLoading, setIsLoading] = useState(false);
-  
   const handleClick = async () => {
     setIsLoading(true);
     try {
-      await onComplete(content);
+      await onComplete(Number(contentId), Number(moduleId));
     } finally {
       setIsLoading(false);
     }
@@ -143,15 +143,11 @@ const ContentCompletionButton: FC<ContentCompletionButtonProps> = ({
       {isLoading ? 'Marking...' : 'Mark as Complete'}
     </button>
   );
-};
+}
 
-const ModuleLockScreen: FC<ModuleLockScreenProps> = ({
-  module,
-  onBack,
-  className = '',
-}) => {
+const ModuleLockScreen: FC = () => {
   return (
-    <div className={`text-center p-8 bg-neutral-50 rounded-lg ${className}`}>
+    <div className="text-center p-8 bg-neutral-50 rounded-lg">
       <Lock className="w-12 h-12 mx-auto text-neutral-400 mb-4" />
       <h3 className="text-xl font-semibold text-neutral-900 mb-2">
         Module Locked
@@ -160,7 +156,7 @@ const ModuleLockScreen: FC<ModuleLockScreenProps> = ({
         You need to complete the previous module to unlock this content.
       </p>
       <button
-        onClick={onBack}
+        onClick={() => window.history.back()}
         className="btn-outline"
       >
         Back to Modules
@@ -169,23 +165,36 @@ const ModuleLockScreen: FC<ModuleLockScreenProps> = ({
   );
 };
 
-const ModuleProgressTracker: FC<ModuleProgressTrackerProps> = ({
-  completed,
-  total,
-  percentage,
+const ModuleProgressTracker: FC<ModuleProgressTrackerProps & { className?: string }> = ({
+  module,
   className = '',
 }) => {
+  const completedContents =
+    Array.isArray((module as any).contents)
+      ? ((module as any).contents as any[]).filter(
+          (c: any) => c?.user_progress?.status === 'completed'
+        ).length
+      : 0;
+  const totalContents =
+    Array.isArray((module as any).contents)
+      ? ((module as any).contents as any[]).length
+      : 0;
+  const completionPercentage =
+    totalContents > 0
+      ? Math.round((completedContents / totalContents) * 100)
+      : 0;
+
   return (
     <div className={`card p-6 ${className}`}>
       <div className="text-center mb-4">
         <div className="text-3xl font-bold text-primary-600 mb-1">
-          {percentage}%
+          {completionPercentage}%
         </div>
         <p className="text-neutral-600">Complete</p>
       </div>
-      <ProgressBar value={percentage} className="mb-4" animated />
+      <ProgressBar value={completionPercentage} className="mb-4" animated />
       <p className="text-sm text-neutral-600 text-center">
-        {completed} of {total} lessons completed
+        {completedContents} of {totalContents} lessons completed
       </p>
     </div>
   );
@@ -390,10 +399,6 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
     );
   }
 
-  const completedContents = module.contents?.filter(c => c.user_progress?.status === 'completed').length || 0;
-  const totalContents = module.contents?.length || 0;
-  const completionPercentage = totalContents > 0 ? Math.round((completedContents / totalContents) * 100) : 0;
-
   return (
     <Layout>
       {/* Header */}
@@ -429,7 +434,7 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
               </div>
               <div className="flex items-center space-x-1">
                 <BookOpen className="w-4 h-4" />
-                <span>{totalContents} lessons</span>
+                <span>{module.contents?.length || 0} lessons</span>
               </div>
               <span className={`px-2 py-1 rounded-full text-xs ${
                 module.difficulty_level === 'beginner' ? 'bg-primary-100 text-primary-700' :
@@ -442,10 +447,14 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
           </div>
 
           <ModuleProgressTracker
-            completed={completedContents}
-            total={totalContents}
-            percentage={completionPercentage}
-            className="lg:w-80"
+            module={{
+              id: module.id,
+              title: module.title,
+              content_count: module.contents?.length || 0,
+              content_completed: module.contents?.filter(c => c.user_progress?.status === 'completed').length || 0,
+              quiz_count: module.quiz_count || 0,
+              quiz_passed: false // or actual value if available
+            }}
           />
         </div>
       </div>
@@ -465,37 +474,45 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
 
               if (isLocked) {
                 return (
-                  <ModuleLockScreen
+                  <div
                     key={content.id}
-                    module={module}
-                    onBack={() => navigate('/modules')}
-                  />
+                    className="flex items-center space-x-4 p-4 rounded-lg border bg-neutral-50 border-neutral-200 opacity-60 cursor-not-allowed"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="text-sm font-medium text-neutral-500 w-6">
+                        {index + 1}
+                      </div>
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br ${getContentTypeColor(content.content_type)}`}>
+                        <Lock className="w-5 h-5 text-white" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-neutral-900 mb-1">{content.title}</h3>
+                      <p className="text-sm text-neutral-500">Complete the previous lesson to unlock.</p>
+                    </div>
+                  </div>
                 );
               }
 
+              // Unlocked content card
               return (
                 <div
                   key={content.id}
-                  className={`flex items-center space-x-4 p-4 rounded-lg border transition-all ${
-                    isLocked 
-                      ? 'bg-neutral-50 border-neutral-200 opacity-60' 
-                      : 'bg-white border-neutral-200 hover:border-primary-300 hover:shadow-md cursor-pointer'
-                  }`}
-                  onClick={() => !isLocked && handleContentClick(content)}
+                  className={`flex items-center space-x-4 p-4 rounded-lg border transition-all bg-white border-neutral-200 hover:border-primary-300 hover:shadow-md cursor-pointer`}
+                  onClick={() => {
+                    if (!isLocked) {
+                      handleContentClick(content);
+                    }
+                  }}
                 >
                   <div className="flex items-center space-x-3">
                     <div className="text-sm font-medium text-neutral-500 w-6">
                       {index + 1}
                     </div>
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br ${getContentTypeColor(content.content_type)}`}>
-                      {isLocked ? (
-                        <Lock className="w-5 h-5 text-white" />
-                      ) : (
-                        <Icon className="w-5 h-5 text-white" />
-                      )}
+                      <Icon className="w-5 h-5 text-white" />
                     </div>
                   </div>
-
                   <div className="flex-1">
                     <h3 className="font-medium text-neutral-900 mb-1">{content.title}</h3>
                     {content.description && (
@@ -617,8 +634,9 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
                 <div className="flex space-x-3">
                   {selectedContent.user_progress?.status !== 'completed' && (
                     <ContentCompletionButton
-                      content={selectedContent}
-                      onComplete={handleContentComplete}
+                      contentId={String(selectedContent.id)}
+                      moduleId={String(module.id)}
+                      onComplete={() => handleContentComplete(selectedContent)}
                     />
                   )}
                   <button

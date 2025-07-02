@@ -70,24 +70,30 @@ export const QuizPage: React.FC = () => {
     const fetchQuiz = async () => {
       try {
         setIsLoading(true);
-        const quizData = await apiClient.getContentQuiz(Number(contentId));
-        setQuiz(quizData);
-        
+        const quizDataResponse = await apiClient.getContentQuiz(Number(contentId));
+        // If the API returns { quiz, questions, user_result? }, merge into Quiz shape
+        const { quiz: quizInfo, questions, ...rest } = quizDataResponse;
+        const mergedQuiz: Quiz = {
+          ...quizInfo,
+          questions: questions.map((q: any) => ({
+            ...q,
+            correct_answer: q.correct_answer ?? ''
+          })),
+        };
+        setQuiz(mergedQuiz);
+
         // Initialize time left if there's a time limit
-        if (quizData.time_limit) {
-          setTimeLeft(quizData.time_limit * 60);
+        if (quizInfo.time_limit) {
+          setTimeLeft(quizInfo.time_limit * 60);
         }
-        
         // Initialize answers with empty strings for each question
         const initialAnswers: Record<number, string> = {};
-        quizData.questions.forEach((question: QuizQuestion) => {
+        mergedQuiz.questions.forEach((question: QuizQuestion) => {
           initialAnswers[question.id] = '';
         });
         setAnswers(initialAnswers);
-        
         // Initialize flagged questions as empty set
         setFlaggedQuestions(new Set());
-        
         // Reset any existing results
         setQuizResult(null);
         setShowResults(false);
