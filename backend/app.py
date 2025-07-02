@@ -1023,36 +1023,6 @@ def get_user_certificates(current_user, user_id):
 
     return jsonify(dict_to_json_serializable(certificates))
 
-@app.route('/content/<int:content_id>/download', methods=['POST'])
-@token_required
-def download_content(current_user, content_id):
-    """Allow a user to download content if available (file or video)"""
-    # Fetch content info
-    content = execute_query(
-        "SELECT * FROM module_content WHERE id = %s",
-        (content_id,),
-        fetch_one=True
-    )
-    if not content:
-        return jsonify({'message': 'Content not found'}), 404
-
-    # Check if file_path exists and is downloadable
-    if content.get('file_path'):
-        file_path = content['file_path']
-        if os.path.exists(file_path):
-            return send_file(
-                file_path,
-                as_attachment=True,
-                download_name=os.path.basename(file_path)
-            )
-        else:
-            return jsonify({'message': 'File not found on server'}), 404
-
-    # If content is a video or has a URL, return the URL
-    if content.get('url'):
-        return jsonify({'url': content['url']}), 200
-
-    return jsonify({'message': 'No downloadable file or URL for this content'}), 400
 @app.route('/refresh-token', methods=['POST'])
 def refresh_token():
     refresh_token = request.json.get('refresh_token')
@@ -3424,7 +3394,35 @@ def activate_module(current_user, module_id):
     )
 
     return jsonify({'message': 'Module activated successfully'})
+@app.route('/modules/<int:module_id>', methods=['PUT'])
+@token_required
+@trainer_required
+def update_module(current_user, module_id):
+    data = request.get_json()
+    required_fields = ['title', 'category']
+    if not all(field in data for field in required_fields):
+        return jsonify({'message': 'Title and category are required'}), 400
 
+    result = execute_query(
+        "SELECT 1 FROM modules WHERE id = %s AND created_by = %s",
+        (module_id, current_user['id']),
+        fetch_one=True
+    )
+    if not result:
+        return jsonify({'message': 'Module not found or unauthorized'}), 404
+
+    execute_query(
+        "UPDATE modules SET title = %s, description = %s, category = %s, "
+        "difficulty_level = %s, estimated_duration = %s, is_active = %s "
+        "WHERE id = %s",
+        (
+            data['title'], data.get('description'), data['category'],
+            data.get('difficulty_level', 'beginner'), data.get('estimated_duration'),
+            data.get('is_active', True), module_id
+        )
+    )
+
+    return jsonify({'message': 'Module updated successfully'})
 @app.route('/modules/<int:module_id>/deactivate', methods=['PUT'])
 @token_required
 @trainer_required
