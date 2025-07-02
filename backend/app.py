@@ -3344,6 +3344,9 @@ def initialize_leaderboard(current_user):
             'message': 'Error initializing leaderboard',
             'error': str(e)
         }), 500
+@app.route('/modules', methods=['POST'])
+@token_required
+@trainer_required
 def create_module(current_user):
     data = request.get_json()
     required_fields = ['title', 'category']
