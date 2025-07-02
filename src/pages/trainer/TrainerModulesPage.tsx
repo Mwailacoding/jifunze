@@ -4,15 +4,15 @@ import {
   BookOpen, 
   Plus, 
   Search, 
-  Filter, 
+   
   MoreVertical, 
   Edit, 
   Eye, 
   
-  Users,
+
   Clock,
   BarChart3,
-  Trash2,
+  
   ToggleLeft
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
@@ -80,7 +80,7 @@ export const TrainerModulesPage: React.FC = () => {
           return a.category.localeCompare(b.category);
         case 'created_at':
         default:
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
       }
     });
 
@@ -91,7 +91,11 @@ export const TrainerModulesPage: React.FC = () => {
       category: '',
       difficulty_level: 'beginner',
       estimated_duration: 60,
-      is_active: true
+      is_active: true,
+      completion_rate: 0,
+      total_learners: 0,
+      total_items: 0,
+      completed_learners: 0
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -338,7 +342,7 @@ export const TrainerModulesPage: React.FC = () => {
                           <span>Edit Module</span>
                         </Link>
                         <button
-                          onClick={() => handleToggleStatus(module.id, module.is_active)}
+                          onClick={() => handleToggleStatus(module.id, module.is_active ?? false)}
                           className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left"
                         >
                           <ToggleLeft className="w-4 h-4" />
@@ -392,7 +396,7 @@ export const TrainerModulesPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-xs text-gray-400">
-                    {new Date(module.created_at).toLocaleDateString()}
+                    {new Date(module.created_at || '').toLocaleDateString()}
                   </div>
                 </div>
               </div>

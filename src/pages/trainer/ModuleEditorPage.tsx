@@ -13,13 +13,13 @@ import {
   CircleDot as DragHandleDots2,
   CheckCircle,
   XCircle,
- 
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../utils/api';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Modal } from '../../components/ui/Modal';
+import { LucideProps } from 'lucide-react';
 
 interface Question {
   id: number;
@@ -146,19 +146,18 @@ export const ModuleEditorPage: React.FC = () => {
     }
   };
 
-  const getEmbedUrl = (youtubeUrl: string) => {
+  const getEmbedUrl = (youtubeUrl: string): string => {
     const videoId = youtubeUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
     return videoId ? `https://www.youtube.com/embed/${videoId}` : '';
   };
 
-  const handleAddContent = async () => {
+  const handleAddContent = async (): Promise<void> => {
     try {
       if (!moduleId) {
         showError('Error', 'Please save the module first before adding content');
         return;
       }
 
-      // Validate YouTube URL if content is video
       if (newContent.content_type === 'video' && newContent.youtube_video_id) {
         const youtubeUrl = newContent.youtube_video_id.trim();
         if (!youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be')) {
@@ -202,7 +201,7 @@ export const ModuleEditorPage: React.FC = () => {
     }
   };
 
-  const handleEditContent = (content: Content) => {
+  const handleEditContent = (content: Content): void => {
     setEditingContent(content);
     setNewContent({
       content_type: content.content_type,
@@ -219,7 +218,7 @@ export const ModuleEditorPage: React.FC = () => {
     setIsContentModalOpen(true);
   };
 
-  const handleDeleteContent = async (contentId: number) => {
+  const handleDeleteContent = async (contentId: number): Promise<void> => {
     try {
       await apiClient.delete(`/modules/content/${contentId}`);
       showSuccess('Content Deleted', 'Content has been removed successfully');
@@ -230,9 +229,35 @@ export const ModuleEditorPage: React.FC = () => {
     }
   };
 
-  const handleEditQuiz = (content: Content) => {
+  const handleEditQuiz = (content: Content): void => {
     setEditingContent(content);
     setCurrentQuestions(content.questions || []);
+  };
+
+  const getContentIcon = (contentType: string): React.ForwardRefExoticComponent<Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>> => {
+    switch (contentType) {
+      case 'video':
+        return Video;
+      case 'document':
+        return FileText;
+      case 'quiz':
+        return Star;
+      default:
+        return BookOpen;
+    }
+  };
+
+  const getContentTypeColor = (contentType: string): "from-red-500 to-red-600" | "from-blue-500 to-blue-600" | "from-accent-500 to-accent-600" | "from-primary-500 to-primary-600" => {
+    switch (contentType) {
+      case 'video':
+        return 'from-red-500 to-red-600';
+      case 'document':
+        return 'from-blue-500 to-blue-600';
+      case 'quiz':
+        return 'from-accent-500 to-accent-600';
+      default:
+        return 'from-primary-500 to-primary-600';
+    }
   };
 
   const handleAddQuestion = async () => {
@@ -324,32 +349,6 @@ export const ModuleEditorPage: React.FC = () => {
     setNewQuestion(prev => ({ ...prev, options: newOptions }));
   };
 
-  const getContentIcon = (contentType: string) => {
-    switch (contentType) {
-      case 'video':
-        return Video;
-      case 'document':
-        return FileText;
-      case 'quiz':
-        return Star;
-      default:
-        return BookOpen;
-    }
-  };
-
-  const getContentTypeColor = (contentType: string) => {
-    switch (contentType) {
-      case 'video':
-        return 'from-red-500 to-red-600';
-      case 'document':
-        return 'from-blue-500 to-blue-600';
-      case 'quiz':
-        return 'from-accent-500 to-accent-600';
-      default:
-        return 'from-primary-500 to-primary-600';
-    }
-  };
-
   if (isLoading) {
     return (
       <Layout>
@@ -396,8 +395,6 @@ export const ModuleEditorPage: React.FC = () => {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Add content inside this div or close it properly */}
-      </div>
         {/* Module Settings */}
         <div className="lg:col-span-1">
           <div className="card p-6">
@@ -412,8 +409,8 @@ export const ModuleEditorPage: React.FC = () => {
                   type="text"
                   value={moduleData.title}
                   onChange={(e) => setModuleData(prev => ({ ...prev, title: e.target.value }))}
-                    className="input-field"
-                    placeholder="Enter module title"
+                  className="input-field"
+                  placeholder="Enter module title"
                 />
               </div>
 
@@ -449,8 +446,8 @@ export const ModuleEditorPage: React.FC = () => {
                 <select
                   value={moduleData.difficulty_level}
                   onChange={(e) => setModuleData(prev => ({ 
-                  ...prev, 
-                  difficulty_level: e.target.value as 'beginner' | 'intermediate' | 'advanced' 
+                    ...prev, 
+                    difficulty_level: e.target.value as 'beginner' | 'intermediate' | 'advanced' 
                   }))}
                   className="input-field"
                 >
@@ -458,9 +455,9 @@ export const ModuleEditorPage: React.FC = () => {
                   <option value="intermediate">Intermediate</option>
                   <option value="advanced">Advanced</option>
                 </select>
-                </div>
+              </div>
 
-                <div>
+              <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Estimated Duration (minutes)
                 </label>
@@ -471,25 +468,274 @@ export const ModuleEditorPage: React.FC = () => {
                   className="input-field"
                   min="1"
                 />
-                </div>
+              </div>
 
-                <div>
+              <div>
                 <label className="flex items-center space-x-2">
                   <input
-                  type="checkbox"
-                  checked={moduleData.is_active ?? true}
-                  onChange={(e) => setModuleData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+                    type="checkbox"
+                    checked={moduleData.is_active ?? true}
+                    onChange={(e) => setModuleData(prev => ({ ...prev, is_active: e.target.checked }))}
+                    className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
                   />
                   <span className="text-sm font-medium text-neutral-700">Active Module</span>
                 </label>
                 <p className="text-xs text-neutral-600 mt-1">
                   Only active modules are visible to learners
                 </p>
-                </div>
-              </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Content List */}
+        <div className="lg:col-span-2">
+          <div className="card p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-neutral-900">Module Content</h2>
+              <button
+                onClick={() => {
+                  setEditingContent(null);
+                  setNewContent({
+                    content_type: 'video',
+                    title: '',
+                    description: '',
+                    url: '',
+                    youtube_video_id: '',
+                    duration: 0,
+                    display_order: 1,
+                    is_downloadable: false,
+                    passing_score: 70,
+                    attempts_limit: 3
+                  });
+                  setIsContentModalOpen(true);
+                }}
+                className="btn-primary flex items-center space-x-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Content</span>
+              </button>
+            </div>
+
+            {contents.length === 0 ? (
+              <div className="text-center py-8 text-neutral-500">
+                No content added yet
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {contents.map((content) => (
+                  <div key={content.id} className="border border-neutral-200 rounded-lg overflow-hidden">
+                    <div 
+                      className={`flex items-center justify-between p-4 bg-gradient-to-r ${getContentTypeColor(content.content_type)} text-white`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        {React.createElement(getContentIcon(content.content_type), { className: "w-5 h-5" })}
+                        <h3 className="font-medium">{content.title}</h3>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button 
+                          onClick={() => handleEditContent(content)}
+                          className="text-white hover:text-neutral-200"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteContent(content.id)}
+                          className="text-white hover:text-neutral-200"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        {content.content_type === 'quiz' && (
+                          <button
+                            onClick={() => handleEditQuiz(content)}
+                            className="text-white hover:text-neutral-200"
+                          >
+                            <BookOpen className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <p className="text-neutral-600 mb-3">{content.description}</p>
+                      {content.content_type === 'video' && content.youtube_video_id && (
+                        <div className="mt-2">
+                          <iframe
+                            src={getEmbedUrl(content.youtube_video_id)}
+                            className="w-full aspect-video rounded"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Add/Edit Content Modal */}
+      <Modal
+        isOpen={isContentModalOpen}
+        onClose={() => {
+          setIsContentModalOpen(false);
+          setEditingContent(null);
+        }}
+        title={editingContent ? 'Edit Content' : 'Add New Content'}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
+              Content Type
+            </label>
+            <select
+              value={newContent.content_type}
+              onChange={(e) => setNewContent({...newContent, content_type: e.target.value})}
+              className="input-field"
+            >
+              <option value="video">Video</option>
+              <option value="document">Document</option>
+              <option value="quiz">Quiz</option>
+              <option value="lesson">Lesson</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
+              Title
+            </label>
+            <input
+              type="text"
+              value={newContent.title}
+              onChange={(e) => setNewContent({...newContent, title: e.target.value})}
+              className="input-field"
+              placeholder="Enter content title"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
+              Description
+            </label>
+            <textarea
+              value={newContent.description}
+              onChange={(e) => setNewContent({...newContent, description: e.target.value})}
+              className="input-field min-h-24"
+              placeholder="Describe this content"
+            />
+          </div>
+
+          {newContent.content_type === 'video' && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                YouTube Video URL
+              </label>
+              <input
+                type="text"
+                value={newContent.youtube_video_id}
+                onChange={(e) => setNewContent({...newContent, youtube_video_id: e.target.value})}
+                className="input-field"
+                placeholder="https://www.youtube.com/watch?v=..."
+              />
+            </div>
+          )}
+
+          {newContent.content_type === 'document' && (
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                Document URL
+              </label>
+              <input
+                type="text"
+                value={newContent.url}
+                onChange={(e) => setNewContent({...newContent, url: e.target.value})}
+                className="input-field"
+                placeholder="https://example.com/document.pdf"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">
+              Duration (minutes)
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={newContent.duration}
+              onChange={(e) => setNewContent({...newContent, duration: parseInt(e.target.value) || 0})}
+              className="input-field"
+            />
+          </div>
+
+          {newContent.content_type === 'quiz' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Passing Score (%)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={newContent.passing_score}
+                  onChange={(e) => setNewContent({...newContent, passing_score: parseInt(e.target.value) || 70})}
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Attempts Limit
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newContent.attempts_limit}
+                  onChange={(e) => setNewContent({...newContent, attempts_limit: parseInt(e.target.value) || 3})}
+                  className="input-field"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={newContent.is_downloadable}
+              onChange={(e) => setNewContent({...newContent, is_downloadable: e.target.checked})}
+              className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+              id="downloadable"
+            />
+            <label htmlFor="downloadable" className="text-sm font-medium text-neutral-700">
+              Allow Download
+            </label>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                setIsContentModalOpen(false);
+                setEditingContent(null);
+              }}
+              className="btn-outline"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleAddContent}
+              disabled={!newContent.title || (newContent.content_type === 'video' && !newContent.youtube_video_id) || (newContent.content_type === 'document' && !newContent.url)}
+              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {editingContent ? 'Update Content' : 'Add Content'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Quiz Questions Modal */}
       {editingContent?.content_type === 'quiz' && (
