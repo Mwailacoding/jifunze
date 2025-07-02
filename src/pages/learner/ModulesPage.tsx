@@ -10,17 +10,16 @@ import {
   Star,
   Users,
   ChevronDown,
-  Award
+  Award,
+  Lock,
+  AlertCircle
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../utils/api';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
-// Make sure '../../types' exports 'Module', or import the correct type name.
-// If the type is named differently (e.g., 'IModule'), update the import accordingly.
-// Example if the type is named 'IModule':
-// import { IModule as Module } from '../../types';
+import { Button } from '../../components/ui/Button';
 
 // If 'Module' does not exist, define it here temporarily:
 export type Module = {
@@ -38,6 +37,139 @@ export type Module = {
 };
 import { useAuth } from '../../contexts/AuthContext';
 import CertificateBadge from '../../components/ui/CertificateBadge';
+
+interface ModuleLockScreenProps {
+  module: {
+    id: number;
+    title: string;
+  };
+  previousModuleId: number;
+  prerequisite?: {
+    id: number;
+    title: string;
+    content_completed?: number;
+    content_count?: number;
+    quiz_passed?: boolean;
+    quiz_count?: number;
+    last_quiz_score?: number; // Optional: show last score
+  };
+}
+
+export const ModuleLockScreen: React.FC<ModuleLockScreenProps> = ({
+  module,
+  previousModuleId,
+  prerequisite
+}) => {
+  if (!prerequisite) {
+    return (
+      <div className="card p-8 text-center">
+        <h3 className="text-xl font-semibold mb-2">Module Locked</h3>
+        <p className="text-neutral-600 mb-6">
+          This module is locked due to an unknown prerequisite. Please contact support.
+        </p>
+        <Button asChild variant="outline">
+          <Link to="/modules">Browse Available Modules</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const contentIncomplete = prerequisite.content_count
+    ? (prerequisite.content_completed ?? 0) < prerequisite.content_count
+    : false;
+
+  const quizNotPassed = prerequisite.quiz_count
+    ? prerequisite.quiz_count > 0 && !prerequisite.quiz_passed
+    : false;
+
+  const progress =
+    prerequisite.content_count && prerequisite.content_completed
+      ? Math.round(
+          (prerequisite.content_completed / prerequisite.content_count) * 100
+        )
+      : 0;
+
+  return (
+    <div className="card p-8 text-center">
+      <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 text-red-600 mb-4">
+        <Lock className="h-8 w-8" />
+      </div>
+
+      <h3 className="text-xl font-semibold mb-2">Module Locked</h3>
+      <p className="text-neutral-600 mb-6">
+        You need to complete the &quot;{prerequisite.title}&quot; module to access this content.
+      </p>
+
+      <div className="max-w-md mx-auto mb-8">
+        <div className="space-y-3 text-left">
+          {contentIncomplete && (
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-accent-600 mr-2 mt-0.5" />
+              <div>
+                <p className="font-medium">Complete all content in &quot;{prerequisite.title}&quot;</p>
+                <p className="text-sm text-neutral-600">
+                  {prerequisite.content_completed} of {prerequisite.content_count} lessons completed
+                </p>
+                {/* Progress Bar */}
+                <div className="mt-2">
+                  <ProgressBar value={progress} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {quizNotPassed && (
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-accent-600 mr-2 mt-0.5" />
+              <div>
+                <p className="font-medium">Pass the quiz in &quot;{prerequisite.title}&quot;</p>
+                <p className="text-sm text-neutral-600">
+                  You need to score at least 80% to pass
+                  {prerequisite.last_quiz_score !== undefined && (
+                    <>
+                      <br />
+                      Your last score: <b>{prerequisite.last_quiz_score}%</b>
+                    </>
+                  )}
+                </p>
+                <Button
+                  asChild
+                  variant="secondary"
+                  className="mt-2"
+                >
+                  <Link to={`/modules/${prerequisite.id}/quiz`}>Go to Quiz</Link>
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!contentIncomplete && !quizNotPassed && (
+            <div className="flex items-start">
+              <CheckCircle2 className="w-5 h-5 text-green-600 mr-2 mt-0.5" />
+              <div>
+                <p className="font-medium">Prerequisite module completed!</p>
+                <p className="text-sm text-neutral-600">
+                  You should now have access to this module
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-center gap-3">
+        <Button asChild variant="default">
+          <Link to={`/modules/${previousModuleId}`}>
+            Go to &quot;{prerequisite.title || 'Previous'}&quot; Module
+          </Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/modules">Browse Available Modules</Link>
+        </Button>
+      </div>
+    </div>
+  );
+};
 
 export const ModulesPage: React.FC = () => {
   const { showError } = useNotification();

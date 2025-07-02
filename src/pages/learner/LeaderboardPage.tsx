@@ -68,6 +68,25 @@ export const LeaderboardPage: React.FC = () => {
         throw new Error('No response from server');
       }
 
+      // Add this to your LeaderboardPage component
+if (leaderboard.length === 0 && !isLoading) {
+  return (
+    <div className="card p-6 text-center">
+      <Trophy className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
+      <h3 className="text-lg font-medium mb-2">Leaderboard is empty</h3>
+      <p className="text-neutral-600">Complete training activities to appear on the leaderboard</p>
+      {user?.role === 'admin' && (
+        <button 
+          onClick={updateLeaderboard}
+          className="btn-primary mt-4"
+        >
+          Initialize Leaderboard
+        </button>
+      )}
+    </div>
+  );
+}
+
       // Process and validate data
       const processedLeaderboard = response.leaderboard?.map(entry => ({
         ...entry,

@@ -73,13 +73,7 @@ export const AdminDashboard: React.FC = () => {
       href: '/admin/analytics',
       color: 'from-accent-500 to-accent-600'
     },
-    {
-      title: 'System Settings',
-      description: 'Configure platform settings',
-      icon: Settings,
-      href: '/admin/settings',
-      color: 'from-purple-500 to-purple-600'
-    }
+   
   ];
 
   if (isLoading) {

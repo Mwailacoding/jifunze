@@ -488,37 +488,45 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
             )}
 
             <div className="bg-neutral-50 rounded-lg p-6 min-h-64">
+            // In the Modal component where you render the video:
               {selectedContent.content_type === 'video' && selectedContent.youtube_video ? (
-                <div className="aspect-video">
-                  <iframe
-                    src={`https://www.youtube.com/embed/${selectedContent.youtube_video.youtube_video_id}`}
-                    title={selectedContent.title}
-                    className="w-full h-full rounded-lg"
-                    allowFullScreen
-                  />
+                <div className="aspect-video relative">
+                  {selectedContent.youtube_video.youtube_video_id ? (
+                    <>
+                      <iframe
+                        src={`https://www.youtube.com/embed/${selectedContent.youtube_video.youtube_video_id}?enablejsapi=1&origin=${window.location.origin}`}
+                        title={selectedContent.title}
+                        className="w-full h-full rounded-lg"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        frameBorder="0"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-10">
+                        <div className="text-white text-center p-4 bg-black bg-opacity-50 rounded-lg">
+                          <Play className="w-12 h-12 mx-auto mb-2" />
+                          <p>Click to play video</p>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center p-8 bg-neutral-100 rounded-lg">
+                      <Video className="w-12 h-12 mx-auto text-neutral-400 mb-4" />
+                      <p className="text-neutral-600">Video content not available</p>
+                      {selectedContent.url && (
+                        <a
+                          href={selectedContent.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-4 inline-flex items-center text-primary-600 hover:text-primary-800"
+                        >
+                          <ExternalLink className="w-4 h-4 mr-2" />
+                          Open in YouTube
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ) : selectedContent.content_type === 'document' && selectedContent.url ? (
-                <div className="text-center">
-                  <FileText className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
-                  <p className="text-neutral-600 mb-4">Document content</p>
-                  <a
-                    href={selectedContent.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-primary inline-flex items-center space-x-2"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Open Document</span>
-                  </a>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <BookOpen className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
-                  <p className="text-neutral-600">Content not available</p>
-                </div>
-              )}
-            </div>
-
+              ) : // ... rest of your content types
             <div className="flex justify-between items-center pt-4 border-t">
               <div className="text-sm text-neutral-600">
                 {selectedContent.content_type === 'video' && selectedContent.duration && (
@@ -549,7 +557,6 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
           </div>
         )}
       </Modal>
-
       {/* Quiz Modal - Automatically shown when quiz content is completed */}
       {showQuiz && quizData && (
         <Modal

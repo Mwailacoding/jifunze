@@ -1,4 +1,5 @@
 import os
+import time
 import mysql.connector
 from flask import Flask, request, jsonify, make_response, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -140,8 +141,8 @@ def execute_query(query, params=None, fetch_one=False, fetch_all=False, lastrowi
         cursor.execute(query, params or ())
 
         if lastrowid:
-            result = cursor.lastrowid
             conn.commit()
+            result = cursor.lastrowid
         elif fetch_one:
             result = cursor.fetchone()
             # Consume any remaining results
@@ -349,9 +350,8 @@ def award_points(user_id, points, reason):
             (user_id,),
             fetch_one=True
         )
-        total_points = result['total_points']
-        
-        # Check for badge thresholds
+        total_points = result['total_points'] if result is not None else 0
+      # Check for badge thresholds
         badges_awarded = []
         for badge_level, threshold in app.config['BADGE_THRESHOLDS'].items():
             if total_points >= threshold:
@@ -399,12 +399,15 @@ def generate_certificate_pdf(certificate_data, preview=False):
     elements = []
 
     # Add logo (if available)
-    try:
+    logo_path = None
+    if app.static_folder is not None:
         logo_path = os.path.join(app.static_folder, 'logo.png')
         if os.path.exists(logo_path):
-            logo = Image(logo_path, width=2*inch, height=1*inch)
-            elements.append(logo)
-    except Exception:
+            try:
+                logo = Image(logo_path, width=2*inch, height=1*inch)
+                elements.append(logo)
+            except Exception:
+                pass
         pass
 
     # Title
@@ -461,11 +464,14 @@ def extract_youtube_id(url):
         r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([^?]+)',
         r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^\/]+)'
     ]
+    import re  # Fix: Ensure re is imported
+
     for pattern in patterns:
         match = re.search(pattern, url)
         if match and match.group(1):
             return match.group(1)
     return None
+
 def update_leaderboard(user_id):
     """Debug-friendly leaderboard updater with comprehensive logging"""
     try:
@@ -554,11 +560,16 @@ def update_leaderboard(user_id):
         conn = None
         try:
             conn = get_db_connection()
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute(upsert_query, params)
-            conn.commit()
-            app.logger.info(f"Successfully updated leaderboard for user {user_id}")
-            return True
+            if conn is None:
+                raise Exception("Database connection failed")
+            cursor = conn.cursor()
+            try:
+                cursor.execute(upsert_query, params)
+                conn.commit()
+                app.logger.info(f"Successfully updated leaderboard for user {user_id}")
+                return True
+            finally:
+                cursor.close()
         except Exception as e:
             if conn:
                 conn.rollback()
@@ -3288,32 +3299,6 @@ def get_leaderboard(current_user):
             'message': 'Error fetching leaderboard',
             'error': str(e)
         }), 500
-@app.route('/leaderboard/initialize', methods=['POST'])
-@token_required
-@admin_required
-def initialize_leaderboard(current_user):
-    """Initialize or rebuild leaderboard data for all users"""
-    try:
-        # Get all users (not just those with employer_id)
-        users = execute_query(
-            "SELECT id FROM users",
-            fetch_all=True
-        )
-        
-        for user in users:
-            update_leaderboard(user['id'])
-            
-        return jsonify({
-            'message': f'Leaderboard initialized for {len(users)} users',
-            'users_processed': len(users)
-        }), 200
-
-    except Exception as e:
-        app.logger.error(f"Error initializing leaderboard: {str(e)}", exc_info=True)
-        return jsonify({
-            'message': 'Error initializing leaderboard',
-            'error': str(e)
-        }), 500
 @app.route('/modules', methods=['POST'])
 @token_required
 @trainer_required
@@ -3349,32 +3334,55 @@ def add_module_content(current_user, module_id):
     # Validate YouTube URL if content is video
     if data.get('content_type') == 'video' and data.get('youtube_video_id'):
         youtube_url = data['youtube_video_id']
-        
-        # Verify it's a valid YouTube URL
         if not any(domain in youtube_url for domain in ['youtube.com', 'youtu.be']):
             return jsonify({'message': 'Invalid YouTube URL'}), 400
-            
         video_id = extract_youtube_id(youtube_url)
         if not video_id:
             return jsonify({'message': 'Could not extract YouTube video ID'}), 400
+        url = youtube_url
+    else:
+        url = data.get('url')
 
-    # Proceed with content creation
+    now = datetime.now(timezone.utc)
     content_id = execute_query(
-        "INSERT INTO module_content (...) VALUES (...)",
-        (...),
+        "INSERT INTO module_content (module_id, content_type, title, description, url, file_path, duration, display_order, is_downloadable, created_at, updated_at) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (
+            module_id,
+            data.get('content_type'),
+            data.get('title'),
+            data.get('description'),
+            url,
+            data.get('file_path'),
+            data.get('duration'),
+            data.get('display_order', 1),
+            data.get('is_downloadable', True),
+            now,
+            now
+        ),
         lastrowid=True
     )
 
     # Handle YouTube video data
     if data.get('content_type') == 'video' and data.get('youtube_video_id'):
         execute_query(
-            """INSERT INTO youtube_videos 
-               (content_id, youtube_url, youtube_video_id, ...) 
-               VALUES (%s, %s, %s, ...)""",
-            (content_id, youtube_url, video_id, ...)
+            "INSERT INTO youtube_videos (content_id, youtube_url, youtube_video_id) VALUES (%s, %s, %s)",
+            (content_id, youtube_url, video_id)
         )
 
     return jsonify({'message': 'Content added successfully', 'content_id': content_id}), 201
+def validate_youtube_video(video_id):
+    """Check if a YouTube video exists and is embeddable"""
+    try:
+        response = requests.get(
+            f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json",
+            timeout=5
+        )
+        if response.status_code == 200:
+            return True
+        return False
+    except Exception:
+        return False
 @app.route('/modules/<int:module_id>/activate', methods=['PUT'])
 @token_required
 @trainer_required
@@ -3832,12 +3840,18 @@ def get_offline_content(current_user):
         'total_size': total_size,
         'max_size': app.config['MAX_OFFLINE_CONTENT_SIZE']
     })
+
 @app.route('/content/<int:content_id>/download', methods=['GET'])
 @token_required
 def download_content(current_user, content_id):
     """Return content URL (or YouTube embed URL if video)"""
     content = execute_query(
-        "SELECT * FROM module_content WHERE id = %s",
+        """
+        SELECT mc.*, yv.youtube_url, yv.youtube_video_id
+        FROM module_content mc
+        LEFT JOIN youtube_videos yv ON mc.id = yv.content_id
+        WHERE mc.id = %s
+        """,
         (content_id,),
         fetch_one=True
     )
@@ -3846,24 +3860,33 @@ def download_content(current_user, content_id):
 
     # Handle YouTube videos
     if content.get('content_type') == 'video' and content.get('youtube_video_id'):
-        embed_url = f"https://www.youtube.com/embed/{content['youtube_video_id']}"
-        return jsonify({
-            'url': embed_url,
-            'type': 'youtube_embed'  # Helps frontend know it's a YouTube video
-        })
+        # Verify the video is embeddable
+        try:
+            video_info = requests.get(
+                f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={content['youtube_video_id']}&format=json"
+            )
+            if video_info.status_code != 200:
+                return jsonify({
+                    'message': 'YouTube video cannot be embedded or is not available',
+                    'error': 'video_not_embeddable'
+                }), 400
+            
+            embed_url = f"https://www.youtube.com/embed/{content['youtube_video_id']}?enablejsapi=1&origin={request.host_url}"
+            app.logger.info(f"Serving YouTube embed: video_id={content['youtube_video_id']}, embed_url={embed_url}")
+            return jsonify({
+                'url': embed_url,
+                'youtube_video_id': content['youtube_video_id'],
+                'youtube_url': content['youtube_url'],
+                'type': 'youtube_embed',
+                'title': video_info.json().get('title', 'YouTube Video')
+            })
+        except Exception as e:
+            app.logger.error(f"Error checking YouTube video: {str(e)}")
+            return jsonify({
+                'message': 'Error verifying YouTube video',
+                'error': str(e)
+            }), 500
 
-    # Handle files (PDFs, etc.)
-    if content.get('file_path'):
-        if os.path.exists(content['file_path']):
-            return send_file(content['file_path'], as_attachment=True)
-        else:
-            return jsonify({'message': 'File not found'}), 404
-
-    # Fallback: Return URL if available
-    if content.get('url'):
-        return jsonify({'url': content['url']}), 200
-
-    return jsonify({'message': 'No downloadable content found'}), 400
 @app.route('/offline-content/check/<int:content_id>', methods=['GET'])
 @token_required
 def check_offline_content(current_user, content_id):
@@ -3932,6 +3955,18 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
+
+@app.route('/leaderboard/initialize', methods=['POST'])
+@token_required
+@admin_required
+def initialize_leaderboard(current_user):
+    """Initialize or rebuild leaderboard data for all users"""
+    users = execute_query("SELECT id FROM users", fetch_all=True)
+    if not users:
+        return jsonify({'message': 'No users found to initialize leaderboard.'}), 200
+    for user in users:
+        update_leaderboard(user['id'])
+    return jsonify({'message': f'Leaderboard initialized for {len(users)} users'}), 200
 
 if __name__=='__main__':
     app.run(debug=True)

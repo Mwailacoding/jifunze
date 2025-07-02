@@ -108,12 +108,7 @@ export const AssignmentsPage: React.FC = () => {
   return (
     <Layout>
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-neutral-900 mb-2">My Assignments</h1>
-        <p className="text-neutral-600">
-          Track your assigned training modules and their completion status.
-        </p>
-      </div>
+
 
       {/* Search and Filters */}
       <div className="card p-6 mb-8">
