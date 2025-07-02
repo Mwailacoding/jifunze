@@ -22,26 +22,19 @@ export const Sidebar: React.FC = () => {
     user: [
       { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard' },
       { icon: BookOpen, label: 'Training Modules', to: '/modules' },
-      { icon: Target, label: 'Assignments', to: '/assignments' },
       { icon: Award, label: 'Leaderboard', to: '/leaderboard' },
-      { icon: FileText, label: 'Certificates', to: '/certificates' },
       { icon: Download, label: 'Offline Content', to: '/offline' },
     ],
     trainer: [
       { icon: LayoutDashboard, label: 'Dashboard', to: '/trainer/dashboard' },
       { icon: BookOpen, label: 'My Modules', to: '/trainer/modules' },
       { icon: Users, label: 'Learners', to: '/trainer/learners' },
-      { icon: Target, label: 'Assignments', to: '/trainer/assignments' },
-      { icon: BarChart3, label: 'Reports', to: '/trainer/reports' },
-      { icon: Calendar, label: 'Schedule', to: '/trainer/schedule' },
     ],
     admin: [
       { icon: LayoutDashboard, label: 'Dashboard', to: '/admin/dashboard' },
       { icon: Users, label: 'User Management', to: '/admin/users' },
       { icon: BookOpen, label: 'Content Management', to: '/admin/modules' },
       { icon: BarChart3, label: 'Analytics', to: '/admin/analytics' },
-      { icon: Award, label: 'Gamification', to: '/admin/gamification' },
-      { icon: Settings, label: 'System Settings', to: '/admin/settings' },
     ]
   };
 

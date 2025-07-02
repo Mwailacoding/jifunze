@@ -1360,7 +1360,11 @@ def get_module(current_user, module_id):
     )
 
     if not module:
+        app.logger.warning(f"Module {module_id} not found or inactive")
         return jsonify({'message': 'Module not found'}), 404
+
+    app.logger.info(f"Found module: {module['title']}")
+
 
     # Get all content for this module with youtube video info if available
     contents = execute_query(
@@ -1376,6 +1380,7 @@ def get_module(current_user, module_id):
         (module_id,),
         fetch_all=True
     )
+    app.logger.info(f"Found {len(contents)} content items for module {module_id}")
 
     # Get the module's quiz
     quiz = execute_query(
@@ -3942,6 +3947,51 @@ def initialize_leaderboard(current_user):
     for user in users:
         update_leaderboard(user['id'])
     return jsonify({'message': f'Leaderboard initialized for {len(users)} users'}), 200
+
+@app.route('/content/<int:content_id>', methods=['PUT'])
+@token_required
+def update_content_progress(current_user, content_id):
+    print("Headers:", request.headers)
+    print("Body:", request.data)
+    data = request.get_json()
+    print("Parsed JSON:", data)
+    if not data or 'status' not in data:
+        return jsonify({'message': 'Status is required'}), 400
+
+    # Reuse the logic from /progress
+    progress = execute_query(
+        "SELECT * FROM user_progress WHERE user_id = %s AND content_id = %s",
+        (current_user['id'], content_id),
+        fetch_one=True
+    )
+
+    if progress:
+        execute_query(
+            "UPDATE user_progress SET status = %s, current_position = %s, "
+            "completed_at = %s, last_accessed = %s, attempts = %s, score = %s "
+            "WHERE user_id = %s AND content_id = %s",
+            (
+                data['status'], data.get('current_position'),
+                datetime.now(timezone.utc) if data['status'] == 'completed' else None,
+                datetime.now(timezone.utc), data.get('attempts', 0),
+                data.get('score'), current_user['id'], content_id
+            )
+        )
+    else:
+        execute_query(
+            "INSERT INTO user_progress (user_id, content_id, status, started_at, "
+            "completed_at, last_accessed, current_position, attempts, score) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                current_user['id'], content_id, data['status'],
+                datetime.now(timezone.utc),
+                datetime.now(timezone.utc) if data['status'] == 'completed' else None,
+                datetime.now(timezone.utc), data.get('current_position'),
+                data.get('attempts', 0), data.get('score')
+            )
+        )
+
+    return jsonify({'message': 'Progress updated successfully'})
 
 if __name__=='__main__':
     app.run(debug=True)

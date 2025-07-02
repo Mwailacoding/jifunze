@@ -28,15 +28,12 @@ export const Navbar: React.FC = () => {
     user: [
       { to: '/dashboard', label: 'Dashboard', icon: BookOpen },
       { to: '/modules', label: 'Training Modules', icon: BookOpen },
-      { to: '/assignments', label: 'Assignments', icon: BookOpen },
       { to: '/leaderboard', label: 'Leaderboard', icon: Award },
-      { to: '/certificates', label: 'Certificates', icon: Award },
     ],
     trainer: [
       { to: '/trainer/dashboard', label: 'Dashboard', icon: BookOpen },
       { to: '/trainer/modules', label: 'My Modules', icon: BookOpen },
       { to: '/trainer/learners', label: 'Learners', icon: User },
-      { to: '/trainer/reports', label: 'Reports', icon: BookOpen },
     ],
     admin: [
       { to: '/admin/dashboard', label: 'Dashboard', icon: BookOpen },
@@ -66,7 +63,6 @@ export const Navbar: React.FC = () => {
               {currentNavLinks.map((link) => {
                 const Icon = link.icon;
                 const isActive = location.pathname === link.to;
-                
                 return (
                   <Link
                     key={link.to}

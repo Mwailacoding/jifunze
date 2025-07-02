@@ -499,35 +499,12 @@ const MobileMenu = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
             </div>
             <nav className="flex-1 flex flex-col justify-center space-y-8">
               <Link
-                to="/features"
-                className="text-3xl font-medium text-neutral-600 hover:text-primary-600 transition-colors"
-                onClick={onClose}
-              >
-                Features
-              </Link>
-              <Link
-                to="/courses"
-                className="text-3xl font-medium text-neutral-600 hover:text-primary-600 transition-colors"
-                onClick={onClose}
-              >
-                Courses
-              </Link>
-              <Link
-                to="/pricing"
-                className="text-3xl font-medium text-neutral-600 hover:text-primary-600 transition-colors"
-                onClick={onClose}
-              >
-                Pricing
-              </Link>
-              <Link
                 to="/login"
                 className="text-3xl font-medium text-neutral-600 hover:text-primary-600 transition-colors"
                 onClick={onClose}
               >
                 Sign In
               </Link>
-            </nav>
-            <div className="mt-auto pt-8">
               <Link
                 to="/register"
                 className="btn-primary text-xl py-4 px-6 text-center block"
@@ -535,7 +512,7 @@ const MobileMenu = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
               >
                 Get Started
               </Link>
-            </div>
+            </nav>
           </div>
         </motion.div>
       )}
@@ -663,36 +640,6 @@ const FeaturesSection = () => {
       color: 'bg-gradient-to-br from-purple-500 to-pink-500'
     },
     {
-      icon: Users,
-      title: 'Collaborative Learning',
-      description: 'Connect with peers and trainers in a supportive learning environment.',
-      color: 'bg-gradient-to-br from-green-500 to-teal-500'
-    },
-    {
-      icon: TrendingUp,
-      title: 'Track Progress',
-      description: 'Monitor your learning journey with detailed analytics and progress tracking.',
-      color: 'bg-gradient-to-br from-yellow-500 to-orange-500'
-    },
-    {
-      icon: Globe,
-      title: 'Global Community',
-      description: 'Join a worldwide network of learners and professionals.',
-      color: 'bg-gradient-to-br from-red-500 to-pink-500'
-    },
-    {
-      icon: Clock,
-      title: 'Flexible Schedule',
-      description: 'Learn at your own pace with 24/7 access to all materials.',
-      color: 'bg-gradient-to-br from-indigo-500 to-blue-500'
-    },
-    {
-      icon: Smartphone,
-      title: 'Mobile Friendly',
-      description: 'Access courses on any device with our responsive platform.',
-      color: 'bg-gradient-to-br from-teal-500 to-green-500'
-    },
-    {
       icon: BarChart2,
       title: 'Skill Analytics',
       description: 'Get detailed insights into your skill development and growth.',
@@ -719,7 +666,7 @@ const FeaturesSection = () => {
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="flex flex-col gap-8 md:flex-row md:gap-8 lg:grid lg:grid-cols-3 lg:gap-12">
           {features.map((feature, index) => (
             <FeatureCard 
               key={index}
@@ -729,30 +676,6 @@ const FeaturesSection = () => {
               index={index}
               color={feature.color}
             />
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
-
-// Stats Section
-const StatsSection = () => {
-  const stats = [
-    { number: '10,000+', label: 'Active Learners', icon: Users },
-    { number: '500+', label: 'Training Modules', icon: Bookmark },
-    { number: '95%', label: 'Success Rate', icon: CheckCircle },
-    { number: '24/7', label: 'Access', icon: Clock },
-    { number: '99.9%', label: 'Uptime', icon: Shield },
-    { number: '10K+', label: 'Certificates', icon: Award }
-  ];
-
-  return (
-    <section className="py-16 bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          {stats.map((stat, index) => (
-            <StatsCounter key={index} number={stat.number} label={stat.label} icon={stat.icon} />
           ))}
         </div>
       </div>
@@ -786,24 +709,6 @@ export const LandingPage: React.FC = () => {
             </div>
             <div className="hidden md:flex items-center space-x-6">
               <Link
-                to="/features"
-                className="text-neutral-600 hover:text-primary-600 font-medium transition-colors"
-              >
-                Features
-              </Link>
-              <Link
-                to="/courses"
-                className="text-neutral-600 hover:text-primary-600 font-medium transition-colors"
-              >
-                Courses
-              </Link>
-              <Link
-                to="/pricing"
-                className="text-neutral-600 hover:text-primary-600 font-medium transition-colors"
-              >
-                Pricing
-              </Link>
-              <Link
                 to="/login"
                 className="text-neutral-600 hover:text-primary-600 font-medium transition-colors"
               >
@@ -828,106 +733,7 @@ export const LandingPage: React.FC = () => {
       </motion.header>
 
       <HeroSection />
-      <StatsSection />
       <FeaturesSection />
-
-      {/* Benefits Section */}
-      <section className="py-20 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -50 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5 }}
-              viewport={{ once: true, margin: "0px 0px -100px 0px" }}
-            >
-              <h2 className="text-4xl font-bold text-neutral-900 mb-6">
-                Why Choose Our Platform?
-              </h2>
-              <div className="space-y-4">
-                {[
-                  'Personalized learning paths tailored to your goals',
-                  'Expert-led content from seasoned professionals',
-                  'Mobile-friendly design for learning on-the-go',
-                  'Comprehensive progress tracking and analytics',
-                  'Offline access to course materials',
-                  'Regular content updates and new courses'
-                ].map((benefit, index) => (
-                  <motion.div 
-                    key={index}
-                    className="flex items-center space-x-3"
-                    initial={{ opacity: 0, x: -20 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    viewport={{ once: true, margin: "0px 0px -50px 0px" }}
-                  >
-                    <CheckCircle className="w-5 h-5 text-primary-500 flex-shrink-0" />
-                    <span className="text-neutral-700">{benefit}</span>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-            
-            <motion.div
-              initial={{ opacity: 0, x: 50 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5 }}
-              viewport={{ once: true, margin: "0px 0px -100px 0px" }}
-            >
-              <TestimonialCard />
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Technology Stack Section */}
-      <section className="py-20 bg-neutral-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div 
-            className="text-center mb-16"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-4xl font-bold text-neutral-900 mb-4">
-              Built With Modern Technology
-            </h2>
-            <p className="text-xl text-neutral-600 max-w-2xl mx-auto">
-              Our platform leverages cutting-edge technologies to deliver the best learning experience.
-            </p>
-          </motion.div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              { icon: Code, name: 'React', description: 'Frontend framework for interactive UIs' },
-              { icon: Database, name: 'Flask', description: 'Scalable backend technology' },
-              { icon: Zap, name: 'GraphQL', description: 'Efficient data fetching' },
-              { icon: Shield, name: 'OAuth 2.0', description: 'Secure authentication' },
-            ].map((tech, index) => (
-              <motion.div
-                key={index}
-                className="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow text-center"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                viewport={{ once: true }}
-                whileHover={{ y: -5 }}
-              >
-                <div className="w-12 h-12 bg-gradient-to-br from-primary-100 to-secondary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <tech.icon className="w-6 h-6 text-primary-600" />
-                </div>
-                <h3 className="text-lg font-semibold text-neutral-900 mb-2">
-                  {tech.name}
-                </h3>
-                <p className="text-neutral-600 text-sm">
-                  {tech.description}
-                </p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* CTA Section */}
       <section className="py-20 bg-gradient-to-br from-primary-500 to-secondary-500 relative overflow-hidden">

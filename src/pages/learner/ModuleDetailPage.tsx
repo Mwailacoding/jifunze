@@ -91,12 +91,11 @@ interface Module {
   offline_available?: boolean;
 }
 
-const transformModuleData = (apiData: any): Module => {
-  return {
-    id: apiData.id,
-    name: apiData.name || apiData.title || 'Unnamed Module',
-    title: apiData.title || 'Untitled Module',
-    category: apiData.category || 'General',
+const transformModuleData = (apiData: any): Module => ({
+  id: apiData.id,
+  name: apiData.name ?? apiData.title ?? 'Unnamed Module',
+  title: apiData.title ?? 'Untitled Module',
+  category: apiData.category ?? 'General',
     difficulty_level: apiData.difficulty_level || 'beginner',
     is_active: apiData.is_active ?? true,
     created_by: apiData.created_by || 0,
@@ -104,7 +103,12 @@ const transformModuleData = (apiData: any): Module => {
     description: apiData.description,
     estimated_duration: apiData.estimated_duration,
     completion_percentage: apiData.completion_percentage,
-    contents: apiData.contents || [],
+    contents: (apiData.contents || []).map((content: any) => ({
+      ...content,
+      // Ensure quizzes are properly marked
+      content_type: content.content_type === 'quiz' ? 'quiz' : content.content_type,
+      // Add quiz-specific properties if needed
+    })),
     content_count: apiData.content_count,
     quiz_count: apiData.quiz_count,
     learner_count: apiData.learner_count,
@@ -113,15 +117,10 @@ const transformModuleData = (apiData: any): Module => {
     user_progress: apiData.user_progress,
     youtube_video: apiData.youtube_video,
     offline_available: apiData.offline_available
-  };
-};
+});
 
 interface ModuleDetailPageProps {
-  components: {
-    ContentCompletionButton: React.FC<ContentCompletionButtonProps>;
-    ModuleLockScreen: React.FC<ModuleLockScreenProps>;
-    ModuleProgressTracker: React.FC<ModuleProgressTrackerProps>;
-  };
+  components?: any;
 }
 
 const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
@@ -394,6 +393,7 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
               const isCompleted = content.user_progress?.status === 'completed';
               const isInProgress = content.user_progress?.status === 'in_progress';
               const isLocked = index > 0 && !module.contents![index - 1].user_progress?.status;
+              const isQuiz = content.content_type === 'quiz';
 
               return (
                 <div
@@ -430,6 +430,11 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
                       )}
                       {content.offline_available && (
                         <span className="text-primary-600">Available offline</span>
+                      )}
+                      {isQuiz && (
+                        <div className="ml-2">
+                          <Badge variant="text">Quiz</Badge>
+                        </div>
                       )}
                     </div>
                   </div>

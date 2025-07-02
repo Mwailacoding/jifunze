@@ -327,22 +327,6 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {/* Quick Actions */}
-          <div className="card p-6 bg-gradient-to-br from-primary-50 to-secondary-50">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Plus className="w-8 h-8 text-white" />
-              </div>
-              <h3 className="font-semibold text-neutral-900 mb-1">Need Help?</h3>
-              <p className="text-sm text-neutral-600 mb-4">
-                Access admin documentation and support resources.
-              </p>
-              <button className="btn-primary w-full">
-                View Documentation
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </Layout>

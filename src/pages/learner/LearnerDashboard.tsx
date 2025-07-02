@@ -83,16 +83,6 @@ export const LearnerDashboard: React.FC = () => {
           }))
         );
 
-        // Fetch assignments
-        const assignmentsData = await apiClient.getAssignments();
-        setUpcomingAssignments(
-          assignmentsData.slice(0, 3).map((assignment: any) => ({
-            ...assignment,
-            id: assignment.id?.toString?.() ?? String(assignment.id),
-            completion_percentage: assignment.completion_percentage ?? 0
-          }))
-        );
-
       } catch (error) {
         showError('Error', 'Failed to load dashboard data');
       } finally {
@@ -113,37 +103,6 @@ export const LearnerDashboard: React.FC = () => {
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
   };
-
-  const quickActions = [
-    {
-      title: 'Browse Modules',
-      description: 'Explore available training content',
-      icon: BookOpen,
-      href: '/modules',
-      color: 'from-primary-500 to-primary-600'
-    },
-    {
-      title: 'View Assignments',
-      description: 'Check your assigned tasks',
-      icon: Target,
-      href: '/assignments',
-      color: 'from-secondary-500 to-secondary-600'
-    },
-    {
-      title: 'Achievements',
-      description: 'See your progress',
-      icon: Award,
-      href: '/achievements',
-      color: 'from-accent-500 to-accent-600'
-    },
-    {
-      title: 'Certificates',
-      description: 'Download your achievements',
-      icon: Star,
-      href: '/certificates',
-      color: 'from-purple-500 to-purple-600'
-    }
-  ];
 
   if (isLoading) {
     return (
@@ -253,26 +212,6 @@ export const LearnerDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold text-neutral-900 mb-4">Quick Actions</h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {quickActions.map((action, index) => (
-            <Link
-              key={index}
-              to={action.href}
-              className="card p-4 hover:shadow-xl transition-all duration-300 transform hover:scale-105 group"
-            >
-              <div className={`w-12 h-12 bg-gradient-to-br ${action.color} rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
-                <action.icon className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="font-semibold text-neutral-900 mb-1">{action.title}</h3>
-              <p className="text-sm text-neutral-600">{action.description}</p>
-            </Link>
-          ))}
-        </div>
-      </div>
-
       {/* Main Content Grid */}
       <div className="grid lg:grid-cols-3 gap-8">
         {/* Recent Activity & Continue Learning */}
@@ -363,43 +302,6 @@ export const LearnerDashboard: React.FC = () => {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Upcoming Assignments */}
-          <div className="card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-neutral-900">Upcoming Assignments</h3>
-              <Link to="/assignments" className="text-primary-600 hover:text-primary-700 text-sm">
-                View All
-              </Link>
-            </div>
-            
-            {upcomingAssignments.length > 0 ? (
-              <div className="space-y-3">
-                {upcomingAssignments.map((assignment) => (
-                  <div key={assignment.id} className="p-3 bg-neutral-50 rounded-lg">
-                    <h4 className="font-medium text-neutral-900 text-sm mb-1">
-                      {assignment.module_title}
-                    </h4>
-                    {assignment.due_date && (
-                      <div className="flex items-center space-x-1 text-xs text-neutral-600">
-                        <Calendar className="w-3 h-3" />
-                        <span>Due: {new Date(assignment.due_date).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                    <div className="mt-2">
-                      <ProgressBar 
-                        value={assignment.completion_percentage || 0} 
-                        size="sm"
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-neutral-600">No upcoming assignments</p>
-            )}
-          </div>
-
           {/* Achievement Showcase */}
           <div className="card p-6">
             <h3 className="font-semibold text-neutral-900 mb-4">Recent Achievements</h3>

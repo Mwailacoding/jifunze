@@ -111,37 +111,6 @@ export const TrainerDashboard: React.FC = () => {
     return 'Good evening';
   };
 
-  const quickActions = [
-    {
-      title: 'Create Module',
-      description: 'Build new training content',
-      icon: Plus,
-      href: '/trainer/modules/new',
-      color: 'from-blue-500 to-blue-600'
-    },
-    {
-      title: 'View Learners',
-      description: 'Monitor learner progress',
-      icon: Users,
-      href: '/trainer/learners',
-      color: 'from-teal-500 to-teal-600'
-    },
-    {
-      title: 'Create Assignment',
-      description: 'Assign modules to learners',
-      icon: Target,
-      href: '/trainer/assignments',
-      color: 'from-orange-500 to-orange-600'
-    },
-    {
-      title: 'View Reports',
-      description: 'Analyze performance data',
-      icon: BarChart3,
-      href: '/trainer/reports',
-      color: 'from-purple-500 to-purple-600'
-    }
-  ];
-
   if (isLoading) {
     return (
       <Layout>
@@ -246,25 +215,6 @@ export const TrainerDashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {quickActions.map((action, index) => (
-            <Link
-              key={index}
-              to={action.href}
-              className="bg-white rounded-lg shadow-sm p-4 border border-gray-200 hover:shadow-xl transition-all duration-300 transform hover:scale-105 group"
-            >
-              <div className={`w-12 h-12 bg-gradient-to-br ${action.color} rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
-                <action.icon className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="font-semibold text-gray-900 mb-1">{action.title}</h3>
-              <p className="text-sm text-gray-600">{action.description}</p>
-            </Link>
-          ))}
-        </div>
-      </div>
-
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
           <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
@@ -358,33 +308,6 @@ export const TrainerDashboard: React.FC = () => {
               </div>
             ) : (
               <p className="text-sm text-gray-600">No recent quiz submissions</p>
-            )}
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-            <h3 className="font-semibold text-gray-900 mb-4">Assignment Status</h3>
-            
-            {dashboardData.assignment_stats.length > 0 ? (
-              <div className="space-y-3">
-                {dashboardData.assignment_stats.slice(0, 3).map((assignment, index) => (
-                  <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                    <h4 className="font-medium text-gray-900 text-sm mb-1">
-                      {assignment.module_title}
-                    </h4>
-                    <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
-                      <span>{assignment.assigned_to || 0} assigned</span>
-                      <span>{assignment.completed_by || 0} completed</span>
-                    </div>
-                    <ProgressBar 
-                      value={assignment.assigned_to > 0 ? (assignment.completed_by / assignment.assigned_to) * 100 : 0}
-                      size="sm"
-                      className="w-full"
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-600">No active assignments</p>
             )}
           </div>
 
