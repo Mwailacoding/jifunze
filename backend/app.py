@@ -3216,7 +3216,7 @@ def get_leaderboard(current_user):
                 COALESCE(l.avg_quiz_score, 0) as avg_quiz_score,
                 RANK() OVER (ORDER BY COALESCE(l.total_points, 0) DESC) as rank
             FROM users u
-            LEFT JOIN leaderboard l ON u.id = l.user_id
+            JOIN leaderboard l ON u.id = l.user_id
             WHERE COALESCE(l.total_points, 0) > 0
         """
         
