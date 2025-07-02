@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';      
 import { 
   Save, 
   Plus, 
@@ -29,7 +29,6 @@ interface Question {
   correct_answer: string;
   points: number;
 }
-
 interface Content {
   id: number;
   content_type: string;
@@ -232,12 +231,13 @@ export const ModuleEditorPage: React.FC = () => {
   const handleEditQuiz = async (content: Content): Promise<void> => {
     try {
       setIsLoading(true);
-      const data = await apiClient.get<Module>(`/modules/${parseInt(moduleId!)}`);
-      const updatedContent = data.contents?.find((c: Content) => c.id === content.id);
-      setEditingContent(updatedContent || content);
-      setCurrentQuestions(updatedContent?.questions || []);
+      // Fetch the specific content with its questions
+      const response = await apiClient.get<Content>(`/content/${content.id}/questions`);
+      setEditingContent(response);
+      setCurrentQuestions(response.questions || []);
     } catch (error) {
       showError('Error', 'Failed to load quiz questions');
+      console.error('Error loading questions:', error);
     } finally {
       setIsLoading(false);
     }
@@ -318,22 +318,31 @@ export const ModuleEditorPage: React.FC = () => {
   const handleSaveQuizSettings = async () => {
     try {
       if (!editingContent) return;
-  
+      
       setIsSaving(true);
       
-      // Send the complete content object with updated settings
-      await apiClient.put(`/content/${editingContent.id}`, {
-        ...editingContent,
+      // Prepare the payload with all required fields
+      const payload = {
+        id: editingContent.id,
+        content_type: 'quiz',
+        title: editingContent.title,
+        description: editingContent.description,
         passing_score: newContent.passing_score,
-        attempts_limit: newContent.attempts_limit
-      });
+        attempts_limit: newContent.attempts_limit,
+        // Include other required fields from your backend
+      };
   
+      await apiClient.put(`/content/${editingContent.id}`, payload);
+      
       showSuccess('Settings Saved', 'Quiz settings updated successfully');
+      
+      // Refresh the data
       const data = await apiClient.get<Module>(`/modules/${parseInt(moduleId!)}`);
       setContents(data.contents || []);
       setEditingContent(data.contents?.find((c: Content) => c.id === editingContent.id) || null);
     } catch (error) {
-      showError('Error', 'Failed to update quiz settings');
+      console.error('Error saving quiz settings:', error);
+      showError('Error', 'Failed to update quiz settings. Please check all required fields.');
     } finally {
       setIsSaving(false);
     }

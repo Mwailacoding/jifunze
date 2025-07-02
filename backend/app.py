@@ -1839,6 +1839,34 @@ def get_next_module(current_user, module_id):
     except Exception as e:
         app.logger.error(f"Error getting next module: {str(e)}")
         return jsonify({'message': 'Error checking module progression'}), 500
+
+@app.route('/content/<int:content_id>/questions', methods=['GET'])
+@token_required
+@trainer_required
+def get_content_questions(current_user, content_id):
+    """Get all questions for a specific content item"""
+    try:
+        # Verify ownership
+        content = execute_query(
+            "SELECT 1 FROM module_content mc "
+            "JOIN modules m ON mc.module_id = m.id "
+            "WHERE mc.id = %s AND m.created_by = %s",
+            (content_id, current_user['id']),
+            fetch_one=True
+        )
+        if not content:
+            return jsonify({'message': 'Content not found or unauthorized'}), 404
+
+        questions = execute_query(
+            "SELECT * FROM content_questions WHERE content_id = %s",
+            (content_id,),
+            fetch_all=True
+        )
+        
+        return jsonify(questions), 200
+    except Exception as e:
+        app.logger.error(f"Error getting content questions: {str(e)}")
+        return jsonify({'message': 'Error getting questions'}), 500
     
 @app.route('/content/<int:content_id>/questions', methods=['POST'])
 @token_required
@@ -3962,12 +3990,59 @@ def initialize_leaderboard(current_user):
         update_leaderboard(user['id'])
     return jsonify({'message': f'Leaderboard initialized for {len(users)} users'}), 200
 
+
+
+# --- Combined content update route for both trainer editing and learner progress ---
+
 @app.route('/content/<int:content_id>', methods=['PUT'])
 @token_required
-@trainer_required
 def update_content(current_user, content_id):
-    try:
-        data = request.get_json()
+    data = request.get_json()
+    if not data:
+        return jsonify({'message': 'Request body is required'}), 400
+
+    # Check if this is a progress update (has 'status' field)
+    if 'status' in data:
+        # This is a learner progress update
+        progress = execute_query(
+            "SELECT * FROM user_progress WHERE user_id = %s AND content_id = %s",
+            (current_user['id'], content_id),
+            fetch_one=True
+        )
+
+        if progress:
+            execute_query(
+                "UPDATE user_progress SET status = %s, current_position = %s, "
+                "completed_at = %s, last_accessed = %s, attempts = %s, score = %s "
+                "WHERE user_id = %s AND content_id = %s",
+                (
+                    data['status'], data.get('current_position'),
+                    datetime.now(timezone.utc) if data['status'] == 'completed' else None,
+                    datetime.now(timezone.utc), data.get('attempts', 0),
+                    data.get('score'), current_user['id'], content_id
+                )
+            )
+        else:
+            execute_query(
+                "INSERT INTO user_progress (user_id, content_id, status, started_at, "
+                "completed_at, last_accessed, current_position, attempts, score) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    current_user['id'], content_id, data['status'],
+                    datetime.now(timezone.utc),
+                    datetime.now(timezone.utc) if data['status'] == 'completed' else None,
+                    datetime.now(timezone.utc), data.get('current_position'),
+                    data.get('attempts', 0), data.get('score')
+                )
+            )
+
+        return jsonify({'message': 'Progress updated successfully'})
+    
+    else:
+        # This is a trainer content editing request
+        # Check if user is a trainer
+        if current_user['role'] not in ['trainer', 'admin']:
+            return jsonify({'message': 'Unauthorized'}), 403
         
         # Verify content exists and trainer owns it
         content = execute_query(
@@ -3980,20 +4055,26 @@ def update_content(current_user, content_id):
         if not content:
             return jsonify({'message': 'Content not found or unauthorized'}), 404
 
-        # Only update the fields that were provided
+        # Only update the fields that were provided and exist in module_content table
         update_fields = {}
-        if 'passing_score' in data:
-            update_fields['passing_score'] = data['passing_score']
-        if 'attempts_limit' in data:
-            update_fields['attempts_limit'] = data['attempts_limit']
         if 'title' in data:
             update_fields['title'] = data['title']
         if 'description' in data:
             update_fields['description'] = data['description']
-        # Add other fields as needed
+        if 'url' in data:
+            update_fields['url'] = data['url']
+        if 'file_path' in data:
+            update_fields['file_path'] = data['file_path']
+        if 'duration' in data:
+            update_fields['duration'] = data['duration']
+        if 'display_order' in data:
+            update_fields['display_order'] = data['display_order']
+        if 'is_downloadable' in data:
+            update_fields['is_downloadable'] = data['is_downloadable']
+        # Removed passing_score and attempts_limit as they don't exist in module_content table
 
         if not update_fields:
-            return jsonify({'message': 'No fields to update'}), 400
+            return jsonify({'message': 'No valid fields to update'}), 400
 
         # Build and execute the update query
         set_clause = ", ".join([f"{field} = %s" for field in update_fields])
@@ -4004,8 +4085,5 @@ def update_content(current_user, content_id):
 
         return jsonify({'message': 'Content updated successfully'}), 200
 
-    except Exception as e:
-        app.logger.error(f"Error updating content: {str(e)}")
-        return jsonify({'message': 'Error updating content'}), 500
 if __name__=='__main__':
     app.run(debug=True)
