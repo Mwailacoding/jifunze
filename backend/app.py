@@ -454,12 +454,12 @@ def generate_certificate_pdf(certificate_data, preview=False):
 
     buffer.seek(0)
     return buffer
-def update_leaderboard(user_id, employer_id=None):
-    """Debuggable version of leaderboard update"""
+def update_leaderboard(user_id):
+    """Debug-friendly leaderboard updater with comprehensive logging"""
     try:
-        app.logger.info(f"Attempting leaderboard update for user {user_id}")
+        app.logger.info(f"Starting leaderboard update for user {user_id}")
         
-        # Get user's current points (with debug logging)
+        # 1. Get total points (with debug logging)
         points_query = """
             SELECT COALESCE(SUM(points), 0) as total_points 
             FROM user_points 
@@ -467,52 +467,57 @@ def update_leaderboard(user_id, employer_id=None):
         """
         points_result = execute_query(points_query, (user_id,), fetch_one=True)
         total_points = points_result['total_points'] if points_result else 0
-        app.logger.info(f"Total points for user {user_id}: {total_points}")
+        app.logger.info(f"User {user_id} points: {total_points}")
 
-        # Get badge count
-        badges_result = execute_query(
-            "SELECT COUNT(*) as badges_count FROM user_badges WHERE user_id = %s",
-            (user_id,),
-            fetch_one=True
-        )
+        # 2. Count badges (with debug logging)
+        badges_query = """
+            SELECT COUNT(*) as badges_count 
+            FROM user_badges 
+            WHERE user_id = %s
+        """
+        badges_result = execute_query(badges_query, (user_id,), fetch_one=True)
         badges_count = badges_result['badges_count'] if badges_result else 0
-        app.logger.info(f"Badge count for user {user_id}: {badges_count}")
+        app.logger.info(f"User {user_id} badges: {badges_count}")
 
-        # Get modules completed
-        modules_completed = execute_query(
-            "SELECT COUNT(DISTINCT m.id) as count FROM modules m "
-            "JOIN module_content mc ON m.id = mc.module_id "
-            "LEFT JOIN user_progress up ON (mc.id = up.content_id AND up.user_id = %s AND up.status = 'completed') "
-            "GROUP BY m.id "
-            "HAVING COUNT(mc.id) = SUM(CASE WHEN up.status = 'completed' THEN 1 ELSE 0 END)",
-            (user_id,),
-            fetch_all=True
-        )
-        modules_completed = len(modules_completed) if modules_completed else 0
-        app.logger.info(f"Modules completed for user {user_id}: {modules_completed}")
+        # 3. Count completed modules (optimized query)
+        modules_query = """
+            SELECT COUNT(DISTINCT m.id) as count
+            FROM modules m
+            JOIN module_content mc ON m.id = mc.module_id
+            LEFT JOIN user_progress up ON (
+                mc.id = up.content_id 
+                AND up.user_id = %s 
+                AND up.status = 'completed'
+            )
+            GROUP BY m.id
+            HAVING COUNT(mc.id) = SUM(CASE WHEN up.status = 'completed' THEN 1 ELSE 0 END)
+        """
+        modules_result = execute_query(modules_query, (user_id,), fetch_all=True)
+        modules_completed = len(modules_result) if modules_result else 0
+        app.logger.info(f"User {user_id} completed modules: {modules_completed}")
 
-        # Get quiz stats
-        quiz_stats = execute_query(
-            "SELECT "
-            "COUNT(DISTINCT quiz_id) as quizzes_taken, "
-            "COUNT(DISTINCT CASE WHEN passed = TRUE THEN quiz_id END) as quizzes_passed, "
-            "AVG(CASE WHEN passed = TRUE THEN percentage END) as avg_quiz_score "
-            "FROM quiz_results "
-            "WHERE user_id = %s",
-            (user_id,),
-            fetch_one=True
-        ) or {
+        # 4. Get quiz statistics (simplified)
+        quizzes_query = """
+            SELECT 
+                COUNT(DISTINCT quiz_id) as quizzes_taken,
+                COUNT(DISTINCT CASE WHEN passed = TRUE THEN quiz_id END) as quizzes_passed,
+                COALESCE(AVG(CASE WHEN passed = TRUE THEN percentage END), 0) as avg_quiz_score
+            FROM quiz_results 
+            WHERE user_id = %s
+        """
+        quiz_stats = execute_query(quizzes_query, (user_id,), fetch_one=True) or {
             'quizzes_taken': 0,
             'quizzes_passed': 0,
             'avg_quiz_score': 0
         }
-        app.logger.info(f"Quiz stats for user {user_id}: {quiz_stats}")
+        app.logger.info(f"User {user_id} quiz stats: {quiz_stats}")
 
-        # UPSERT into leaderboard
+        # 5. UPSERT with transaction handling
         upsert_query = """
-            INSERT INTO leaderboard (user_id, total_points, badges_count, 
-            modules_completed, quizzes_taken, quizzes_passed, avg_quiz_score, last_updated) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO leaderboard (
+                user_id, total_points, badges_count, modules_completed,
+                quizzes_taken, quizzes_passed, avg_quiz_score, last_updated
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 total_points = VALUES(total_points),
                 badges_count = VALUES(badges_count),
@@ -523,25 +528,64 @@ def update_leaderboard(user_id, employer_id=None):
                 last_updated = VALUES(last_updated)
         """
         params = (
-            user_id, total_points, badges_count, modules_completed,
-            quiz_stats['quizzes_taken'], quiz_stats['quizzes_passed'],
-            quiz_stats['avg_quiz_score'], datetime.now(timezone.utc)
+            user_id,
+            total_points,
+            badges_count,
+            modules_completed,
+            quiz_stats['quizzes_taken'],
+            quiz_stats['quizzes_passed'],
+            quiz_stats['avg_quiz_score'],
+            datetime.now(timezone.utc)
         )
 
-        app.logger.info(f"Executing UPSERT with params: {params}")
-        result = execute_query(upsert_query, params)
-        app.logger.info(f"UPSERT result: {result}")
-
-        # Verify the update
-        verify_query = "SELECT * FROM leaderboard WHERE user_id = %s"
-        verification = execute_query(verify_query, (user_id,), fetch_one=True)
-        app.logger.info(f"Verification result: {verification}")
-
-        return verification
+        # Execute with explicit connection handling
+        conn = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(upsert_query, params)
+            conn.commit()
+            app.logger.info(f"Successfully updated leaderboard for user {user_id}")
+            return True
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
 
     except Exception as e:
-        app.logger.error(f"Error in update_leaderboard: {str(e)}", exc_info=True)
-        raise
+        app.logger.error(f"CRITICAL ERROR updating leaderboard for user {user_id}: {str(e)}", exc_info=True)
+        return False
+@app.route('/debug/user/<int:user_id>/stats', methods=['GET'])
+def debug_user_stats(user_id):
+    """Debug endpoint to check raw user data"""
+    stats = {
+        'points': execute_query("SELECT COALESCE(SUM(points), 0) as total FROM user_points WHERE user_id = %s", (user_id,), fetch_one=True),
+        'badges': execute_query("SELECT COUNT(*) as count FROM user_badges WHERE user_id = %s", (user_id,), fetch_one=True),
+        'modules': execute_query("""
+            SELECT COUNT(DISTINCT m.id) as count
+            FROM modules m
+            JOIN module_content mc ON m.id = mc.module_id
+            LEFT JOIN user_progress up ON (mc.id = up.content_id AND up.user_id = %s AND up.status = 'completed')
+            GROUP BY m.id
+            HAVING COUNT(mc.id) = SUM(CASE WHEN up.status = 'completed' THEN 1 ELSE 0 END)
+        """, (user_id,), fetch_all=True),
+        'quizzes': execute_query("""
+            SELECT COUNT(DISTINCT quiz_id) as taken,
+                   COUNT(DISTINCT CASE WHEN passed THEN quiz_id END) as passed,
+                   AVG(CASE WHEN passed THEN percentage END) as avg_score
+            FROM quiz_results WHERE user_id = %s
+        """, (user_id,), fetch_one=True)
+    }
+    return jsonify(dict_to_json_serializable(stats))
+
+@app.route('/debug/leaderboard/force-update/<int:user_id>', methods=['POST'])
+def debug_force_update(user_id):
+    """Force update a user's leaderboard entry"""
+    success = update_leaderboard(user_id)
+    return jsonify({'success': success, 'user_id': user_id})
 def get_user_by_id(user_id):
     user = execute_query(
         "SELECT id, email, first_name, last_name, role, password_hash, is_active, employer_id, department_id FROM users WHERE id = %s",
