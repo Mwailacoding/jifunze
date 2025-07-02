@@ -64,6 +64,7 @@ export const QuizPage: React.FC = () => {
   const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
   const [showResults, setShowResults] = useState(false);
   const [showExplanation, setShowExplanation] = useState<number | null>(null);
+  const [quizStarted, setQuizStarted] = useState(false);
 
   useEffect(() => {
     const fetchQuiz = async () => {
@@ -226,6 +227,27 @@ export const QuizPage: React.FC = () => {
             variant="default"
           >
             Go Back
+          </Button>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show Start Quiz button if quiz hasn't started and results are not shown
+  if (!quizStarted && !showResults) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center h-96">
+          <h1 className="text-2xl font-bold mb-4">{quiz.title}</h1>
+          {quiz.description && (
+            <p className="text-neutral-600 mb-6 text-center max-w-xl">{quiz.description}</p>
+          )}
+          <Button
+            onClick={() => setQuizStarted(true)}
+            variant="default"
+            size="lg"
+          >
+            Start Quiz
           </Button>
         </div>
       </Layout>
@@ -469,7 +491,7 @@ export const QuizPage: React.FC = () => {
                         : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                     }`}
                   >
-                    {index + 1}
+                  {index + 1}
                     {flaggedQuestions.has(q.id) && (
                       <Flag className="w-2 h-2 text-red-500 absolute -top-0.5 -right-0.5" />
                     )}

@@ -3209,96 +3209,71 @@ def award_badge(current_user):
 @app.route('/leaderboard', methods=['GET'])
 @token_required
 def get_leaderboard(current_user):
-    """Get leaderboard data for all users"""
+    """Simple leaderboard: rank users by total points and badge count."""
     try:
-        # Get query parameters
         limit = int(request.args.get('limit', 10))
-        period = request.args.get('period', 'all')  # 'all', 'monthly', 'weekly'
-
-        # Base query for leaderboard
-        query = """
+        # Aggregate total points and badge count for each user
+        query = '''
             SELECT 
                 u.id,
                 u.first_name,
                 u.last_name,
-                u.profile_picture,
-                COALESCE(l.total_points, 0) as total_points,
-                COALESCE(l.badges_count, 0) as badges_count,
-                COALESCE(l.modules_completed, 0) as modules_completed,
-                COALESCE(l.quizzes_taken, 0) as quizzes_taken,
-                COALESCE(l.quizzes_passed, 0) as quizzes_passed,
-                COALESCE(l.avg_quiz_score, 0) as avg_quiz_score,
-                RANK() OVER (ORDER BY COALESCE(l.total_points, 0) DESC) as rank
+                COALESCE(SUM(up.points), 0) as total_points,
+                (SELECT COUNT(*) FROM user_badges ub WHERE ub.user_id = u.id) as badges_count
             FROM users u
-            JOIN leaderboard l ON u.id = l.user_id
-            WHERE COALESCE(l.total_points, 0) > 0
-        """
-        
-        params = []
-        
-        # Apply time period filter
-        if period == 'monthly':
-            query += " AND l.last_updated >= %s"
-            params.append(datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0))
-        elif period == 'weekly':
-            query += " AND l.last_updated >= %s"
-            params.append(datetime.now(timezone.utc) - timedelta(days=datetime.now(timezone.utc).weekday()))
-            
-        query += """
+            LEFT JOIN user_points up ON u.id = up.user_id
+            GROUP BY u.id, u.first_name, u.last_name
+            HAVING total_points > 0
             ORDER BY total_points DESC, badges_count DESC
             LIMIT %s
-        """
-        params.append(limit)
-        
-        leaderboard = execute_query(query, params, fetch_all=True) or []
-        
-        # Get current user's rank and stats
-        user_stats = execute_query(
-            """
-            WITH ranked_users AS (
+        '''
+        leaderboard = execute_query(query, (limit,), fetch_all=True) or []
+
+        # Add rank to each user
+        for idx, user in enumerate(leaderboard, start=1):
+            user['rank'] = idx
+
+        # Get current user's stats and rank
+        user_stats = None
+        if leaderboard:
+            # Get current user's total points and badges
+            stats_query = '''
                 SELECT 
                     u.id,
                     u.first_name,
                     u.last_name,
-                    u.profile_picture,
-                    COALESCE(l.total_points, 0) as total_points,
-                    COALESCE(l.badges_count, 0) as badges_count,
-                    COALESCE(l.modules_completed, 0) as modules_completed,
-                    COALESCE(l.quizzes_taken, 0) as quizzes_taken,
-                    COALESCE(l.quizzes_passed, 0) as quizzes_passed,
-                    COALESCE(l.avg_quiz_score, 0) as avg_quiz_score,
-                    RANK() OVER (ORDER BY COALESCE(l.total_points, 0) DESC) as rank
+                    COALESCE(SUM(up.points), 0) as total_points,
+                    (SELECT COUNT(*) FROM user_badges ub WHERE ub.user_id = u.id) as badges_count
                 FROM users u
-                LEFT JOIN leaderboard l ON u.id = l.user_id
-                WHERE COALESCE(l.total_points, 0) > 0
-            )
-            SELECT * FROM ranked_users WHERE id = %s
-            """,
-            (current_user['id'],),
-            fetch_one=True
-        )
+                LEFT JOIN user_points up ON u.id = up.user_id
+                WHERE u.id = %s
+                GROUP BY u.id, u.first_name, u.last_name
+            '''
+            stats = execute_query(stats_query, (current_user['id'],), fetch_one=True)
+            if stats:
+                # Find rank
+                rank_query = '''
+                    SELECT COUNT(*) + 1 AS rank FROM (
+                        SELECT u.id, COALESCE(SUM(up.points), 0) as total_points
+                        FROM users u
+                        LEFT JOIN user_points up ON u.id = up.user_id
+                        GROUP BY u.id
+                        HAVING total_points > %s
+                    ) ranked
+                '''
+                rank_result = execute_query(rank_query, (stats['total_points'],), fetch_one=True)
+                stats['rank'] = rank_result['rank'] if rank_result else None
+                user_stats = stats
 
-        # Format the response data
         response_data = {
             'leaderboard': dict_to_json_serializable(leaderboard),
             'user_stats': dict_to_json_serializable(user_stats) if user_stats else None
         }
-
         return jsonify(response_data), 200
-
-    except ValueError as e:
-        app.logger.error(f"Invalid request parameter: {str(e)}")
-        return jsonify({
-            'message': 'Invalid request parameter',
-            'error': str(e)
-        }), 400
-
     except Exception as e:
-        app.logger.error(f"Error fetching leaderboard: {str(e)}", exc_info=True)
-        return jsonify({
-            'message': 'Error fetching leaderboard',
-            'error': str(e)
-        }), 500
+        app.logger.error(f"Error fetching simple leaderboard: {str(e)}", exc_info=True)
+        return jsonify({'message': 'Error fetching leaderboard', 'error': str(e)}), 500
+
 @app.route('/modules', methods=['POST'])
 @token_required
 @trainer_required

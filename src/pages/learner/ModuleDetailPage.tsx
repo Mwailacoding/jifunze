@@ -486,9 +486,7 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
             {selectedContent.description && (
               <p className="text-neutral-600">{selectedContent.description}</p>
             )}
-
             <div className="bg-neutral-50 rounded-lg p-6 min-h-64">
-            // In the Modal component where you render the video:
               {selectedContent.content_type === 'video' && selectedContent.youtube_video ? (
                 <div className="aspect-video relative">
                   {selectedContent.youtube_video.youtube_video_id ? (
@@ -526,32 +524,32 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
                     </div>
                   )}
                 </div>
-              ) : // ... rest of your content types
-            <div className="flex justify-between items-center pt-4 border-t">
-              <div className="text-sm text-neutral-600">
-                {selectedContent.content_type === 'video' && selectedContent.duration && (
-                  <span>Duration: {selectedContent.duration} minutes</span>
-                )}
-              </div>
-              
-              <div className="flex space-x-3">
-                {selectedContent.user_progress?.status !== 'completed' && (
+              ) : null}
+              <div className="flex justify-between items-center pt-4 border-t">
+                <div className="text-sm text-neutral-600">
+                  {selectedContent.content_type === 'video' && selectedContent.duration && (
+                    <span>Duration: {selectedContent.duration} minutes</span>
+                  )}
+                </div>
+                <div className="flex space-x-3">
+                  {selectedContent.user_progress?.status !== 'completed' && (
+                    <button
+                      onClick={() => {
+                        handleContentComplete(selectedContent);
+                        setIsContentModalOpen(false);
+                      }}
+                      className="btn-primary"
+                    >
+                      Mark as Complete
+                    </button>
+                  )}
                   <button
-                    onClick={() => {
-                      handleContentComplete(selectedContent);
-                      setIsContentModalOpen(false);
-                    }}
-                    className="btn-primary"
+                    onClick={() => setIsContentModalOpen(false)}
+                    className="btn-outline"
                   >
-                    Mark as Complete
+                    Close
                   </button>
-                )}
-                <button
-                  onClick={() => setIsContentModalOpen(false)}
-                  className="btn-outline"
-                >
-                  Close
-                </button>
+                </div>
               </div>
             </div>
           </div>

@@ -19,6 +19,7 @@ import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { Badge } from '../../components/ui/Badge';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Module } from '../../types/index';
+import { Button } from '../../components/ui/Button';
 
 export const QuizListPage: React.FC = () => {
   const { moduleId } = useParams<{ moduleId: string }>();
@@ -28,6 +29,7 @@ export const QuizListPage: React.FC = () => {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [module, setModule] = useState<Module | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [quizStarted, setQuizStarted] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -126,6 +128,25 @@ export const QuizListPage: React.FC = () => {
   const totalQuizzes = quizzes.length;
   const completionRate = totalQuizzes > 0 ? (completedQuizzes / totalQuizzes) * 100 : 0;
 
+  // Fix: Remove references to undefined 'quiz' and 'showResults'
+  if (!quizStarted) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center h-96">
+          <h1 className="text-2xl font-bold mb-4">{module.title} Quiz</h1>
+          {/* Removed module.description because it does not exist on type 'Module' */}
+          <Button
+            onClick={() => setQuizStarted(true)}
+            variant="default"
+            size="lg"
+          >
+            Start Quiz
+          </Button>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="mb-8">
@@ -193,99 +214,112 @@ export const QuizListPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="space-y-6">
-        {totalQuizzes === 0 ? (
-          <div className="card p-8 text-center">
-            <BookOpen className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-neutral-900 mb-2">
-              No quizzes available
-            </h3>
-            <p className="text-neutral-600">
-              There are no quizzes for this module yet.
-            </p>
-          </div>
-        ) : (
-          quizzes.map((quiz) => (
-            <div 
-              key={quiz.id} 
-              className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => handleStartQuiz(quiz)}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-3">
-                    {getQuizStatusIcon(quiz)}
-                    <h3 className="text-xl font-semibold text-neutral-900">
-                      {quiz.title}
-                    </h3>
-                    <Badge 
-                      level={quiz.user_result?.passed ? 'gold' : 'default'} 
-                      size="sm"
-                      earned={Boolean(quiz.user_result?.passed)}
-                    >
-                      {getQuizStatusText(quiz)}
-                    </Badge>
-                  </div>
-
-                  {quiz.description && (
-                    <p className="text-neutral-600 mb-4">{quiz.description}</p>
-                  )}
-
-                  <div className="flex items-center space-x-6 text-sm text-neutral-600 mb-4">
-                    <div className="flex items-center space-x-2">
-                      <Target className="w-4 h-4" />
-                      <span>Passing Score: {quiz.passing_score}%</span>
-                    </div>
-                    
-                    {quiz.time_limit && (
-                      <div className="flex items-center space-x-2">
-                        <Timer className="w-4 h-4" />
-                        <span>Time Limit: {formatDuration(quiz.time_limit)}</span>
-                      </div>
-                    )}
-                    
-                    {quiz.questions && (
-                      <div className="flex items-center space-x-2">
-                        <BookOpen className="w-4 h-4" />
-                        <span>{quiz.questions.length} Questions</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {quiz.user_result && (
-                    <div className="bg-neutral-50 rounded-lg p-4 mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-neutral-900">Your Best Result</span>
-                        <span className={`font-semibold ${getQuizStatusColor(quiz)}`}>
-                          {quiz.user_result.score}/{quiz.user_result.max_score} 
-                          ({Math.round(quiz.user_result.percentage)}%)
-                        </span>
-                      </div>
-                      <ProgressBar 
-                        value={quiz.user_result.percentage} 
-                        color={quiz.user_result.passed ? 'primary' : 'secondary'}
+      {!quizStarted ? (
+        <div className="flex flex-col items-center justify-center h-64">
+          <Button
+            onClick={() => setQuizStarted(true)}
+            variant="default"
+            size="lg"
+            className="mb-4"
+          >
+            Start Quiz
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {totalQuizzes === 0 ? (
+            <div className="card p-8 text-center">
+              <BookOpen className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-neutral-900 mb-2">
+                No quizzes available
+              </h3>
+              <p className="text-neutral-600">
+                There are no quizzes for this module yet.
+              </p>
+            </div>
+          ) : (
+            quizzes.map((quiz) => (
+              <div 
+                key={quiz.id} 
+                className="card p-6 hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => handleStartQuiz(quiz)}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-3">
+                      {getQuizStatusIcon(quiz)}
+                      <h3 className="text-xl font-semibold text-neutral-900">
+                        {quiz.title}
+                      </h3>
+                      <Badge 
+                        level={quiz.user_result?.passed ? 'gold' : 'default'} 
                         size="sm"
-                      />
-                      <div className="text-xs text-neutral-600 mt-1">
-                        Completed on {new Date(quiz.user_result.completed_at).toLocaleDateString()}
-                      </div>
+                        earned={Boolean(quiz.user_result?.passed)}
+                      >
+                        {getQuizStatusText(quiz)}
+                      </Badge>
                     </div>
-                  )}
-                </div>
 
-                <div className="ml-6 flex flex-col items-end space-y-3">
-                  {quiz.user_result?.passed && (
-                    <div className="flex items-center space-x-2 text-green-600">
-                      <Trophy className="w-4 h-4" />
-                      <span className="text-sm font-medium">Completed</span>
+                    {quiz.description && (
+                      <p className="text-neutral-600 mb-4">{quiz.description}</p>
+                    )}
+
+                    <div className="flex items-center space-x-6 text-sm text-neutral-600 mb-4">
+                      <div className="flex items-center space-x-2">
+                        <Target className="w-4 h-4" />
+                        <span>Passing Score: {quiz.passing_score}%</span>
+                      </div>
+                      
+                      {quiz.time_limit && (
+                        <div className="flex items-center space-x-2">
+                          <Timer className="w-4 h-4" />
+                          <span>Time Limit: {formatDuration(quiz.time_limit)}</span>
+                        </div>
+                      )}
+                      
+                      {quiz.questions && (
+                        <div className="flex items-center space-x-2">
+                          <BookOpen className="w-4 h-4" />
+                          <span>{quiz.questions.length} Questions</span>
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    {quiz.user_result && (
+                      <div className="bg-neutral-50 rounded-lg p-4 mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-neutral-900">Your Best Result</span>
+                          <span className={`font-semibold ${getQuizStatusColor(quiz)}`}>
+                            {quiz.user_result.score}/{quiz.user_result.max_score} 
+                            ({Math.round(quiz.user_result.percentage)}%)
+                          </span>
+                        </div>
+                        <ProgressBar 
+                          value={quiz.user_result.percentage} 
+                          color={quiz.user_result.passed ? 'primary' : 'secondary'}
+                          size="sm"
+                        />
+                        <div className="text-xs text-neutral-600 mt-1">
+                          Completed on {new Date(quiz.user_result.completed_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="ml-6 flex flex-col items-end space-y-3">
+                    {quiz.user_result?.passed && (
+                      <div className="flex items-center space-x-2 text-green-600">
+                        <Trophy className="w-4 h-4" />
+                        <span className="text-sm font-medium">Completed</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      )}
 
       <div className="mt-8 card p-6 bg-primary-50 border-primary-200">
         <h3 className="text-lg font-semibold text-primary-900 mb-3">Quiz Tips</h3>
