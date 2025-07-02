@@ -341,7 +341,7 @@ def award_points(user_id, points, reason):
             "INSERT INTO user_points (user_id, points, reason, awarded_at) "
             "VALUES (%s, %s, %s, %s)",
             (user_id, points, reason, datetime.now(timezone.utc))
-        )  # <-- FIXED: Added closing parenthesis here
+        )
 
         # Get total points
         result = execute_query(
@@ -351,7 +351,6 @@ def award_points(user_id, points, reason):
         )
         total_points = result['total_points']
         
-
         # Check for badge thresholds
         badges_awarded = []
         for badge_level, threshold in app.config['BADGE_THRESHOLDS'].items():
@@ -371,10 +370,8 @@ def award_points(user_id, points, reason):
                     )
                     badges_awarded.append(badge_level)
 
-        # Update leaderboard if user has an employer
-        user = get_user_by_id(user_id)
-        if user and user.get('employer_id'):
-            update_leaderboard(user_id, user['employer_id'])
+        # Update leaderboard
+        update_leaderboard(user_id)
 
         # Return information about points and any new badges
         return {
@@ -384,7 +381,7 @@ def award_points(user_id, points, reason):
 
     except Exception as e:
         app.logger.error(f"Error awarding points to user {user_id}: {str(e)}")
-        raise  # Re-raise the exception to be handled by the calling function
+        raise
 def generate_certificate_pdf(certificate_data, preview=False):
     """Generate a PDF certificate based on the certificate data"""
     buffer = BytesIO()
@@ -457,15 +454,11 @@ def generate_certificate_pdf(certificate_data, preview=False):
 
     buffer.seek(0)
     return buffer
-def update_leaderboard(user_id, employer_id):
+def update_leaderboard(user_id, employer_id=None):
     """Debuggable version of leaderboard update"""
     try:
-        app.logger.info(f"Attempting leaderboard update for user {user_id} with employer {employer_id}")
+        app.logger.info(f"Attempting leaderboard update for user {user_id}")
         
-        if not employer_id:
-            app.logger.warning("No employer_id - skipping leaderboard update")
-            return
-
         # Get user's current points (with debug logging)
         points_query = """
             SELECT COALESCE(SUM(points), 0) as total_points 
@@ -517,9 +510,9 @@ def update_leaderboard(user_id, employer_id):
 
         # UPSERT into leaderboard
         upsert_query = """
-            INSERT INTO leaderboard (user_id, employer_id, total_points, badges_count, 
+            INSERT INTO leaderboard (user_id, total_points, badges_count, 
             modules_completed, quizzes_taken, quizzes_passed, avg_quiz_score, last_updated) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 total_points = VALUES(total_points),
                 badges_count = VALUES(badges_count),
@@ -530,7 +523,7 @@ def update_leaderboard(user_id, employer_id):
                 last_updated = VALUES(last_updated)
         """
         params = (
-            user_id, employer_id, total_points, badges_count, modules_completed,
+            user_id, total_points, badges_count, modules_completed,
             quiz_stats['quizzes_taken'], quiz_stats['quizzes_passed'],
             quiz_stats['avg_quiz_score'], datetime.now(timezone.utc)
         )
@@ -540,8 +533,8 @@ def update_leaderboard(user_id, employer_id):
         app.logger.info(f"UPSERT result: {result}")
 
         # Verify the update
-        verify_query = "SELECT * FROM leaderboard WHERE user_id = %s AND employer_id = %s"
-        verification = execute_query(verify_query, (user_id, employer_id), fetch_one=True)
+        verify_query = "SELECT * FROM leaderboard WHERE user_id = %s"
+        verification = execute_query(verify_query, (user_id,), fetch_one=True)
         app.logger.info(f"Verification result: {verification}")
 
         return verification
@@ -1627,28 +1620,6 @@ def submit_module_quiz(current_user, module_id):
         if not quiz:
             return jsonify({'message': 'No quiz available for this module'}), 404
 
-        # Check if user has completed all content
-        all_content = execute_query(
-            "SELECT id FROM module_content WHERE module_id = %s",
-            (module_id,),
-            fetch_all=True
-        )
-        
-        completed_content = execute_query(
-            "SELECT COUNT(DISTINCT content_id) as count FROM user_progress "
-            "WHERE user_id = %s AND status = 'completed' "
-            "AND content_id IN (SELECT id FROM module_content WHERE module_id = %s)",
-            (current_user['id'], module_id),
-            fetch_one=True
-        )['count']
-
-        if completed_content < len(all_content):
-            return jsonify({
-                'message': 'You must complete all module content before submitting the quiz',
-                'content_completed': completed_content,
-                'content_required': len(all_content)
-            }), 403
-
         # Get all questions for this quiz
         questions = execute_query(
             "SELECT id, question_text, correct_answer, points FROM quiz_questions "
@@ -1713,12 +1684,9 @@ def submit_module_quiz(current_user, module_id):
                     response['badges_awarded'] = []
                 response['badges_awarded'].extend(quiz_badges)
             
-            # Update leaderboard if user has an employer
-            if current_user.get('employer_id'):
-                update_leaderboard(current_user['id'], current_user['employer_id'])
-        else:
-            # Allow retaking the quiz if failed
-            response['message'] = 'Quiz submitted but not passed - you can retake it'
+            # Update leaderboard
+            update_leaderboard(current_user['id'])
+            response['leaderboard_update'] = True
 
         return jsonify(response), 200
 
@@ -3151,9 +3119,7 @@ def award_badge(current_user):
         )
         
         # Update leaderboard
-        user = get_user_by_id(data['user_id'])
-        if user and user.get('employer_id'):
-            update_leaderboard(user['id'], user['employer_id'])
+        update_leaderboard(data['user_id'])
 
         # Get user details for notification
         user_details = execute_query(
@@ -3185,19 +3151,11 @@ def award_badge(current_user):
 @app.route('/leaderboard', methods=['GET'])
 @token_required
 def get_leaderboard(current_user):
-    """Get leaderboard data for all users within the same employer"""
+    """Get leaderboard data for all users"""
     try:
         # Get query parameters
         limit = int(request.args.get('limit', 10))
         period = request.args.get('period', 'all')  # 'all', 'monthly', 'weekly'
-        employer_id = current_user.get('employer_id')
-
-        if not employer_id:
-            return jsonify({
-                'message': 'You need to be associated with an employer to view the leaderboard',
-                'leaderboard': [],
-                'user_stats': None
-            }), 200
 
         # Base query for leaderboard
         query = """
@@ -3215,10 +3173,10 @@ def get_leaderboard(current_user):
                 RANK() OVER (ORDER BY COALESCE(l.total_points, 0) DESC) as rank
             FROM users u
             LEFT JOIN leaderboard l ON u.id = l.user_id
-            WHERE l.employer_id = %s
+            WHERE COALESCE(l.total_points, 0) > 0
         """
         
-        params = [employer_id]
+        params = []
         
         # Apply time period filter
         if period == 'monthly':
@@ -3236,33 +3194,31 @@ def get_leaderboard(current_user):
         
         leaderboard = execute_query(query, params, fetch_all=True) or []
         
-        # Get current user's rank and stats if they're in the same employer group
-        user_stats = None
-        if employer_id:
-            user_stats = execute_query(
-                """
-                WITH ranked_users AS (
-                    SELECT 
-                        u.id,
-                        u.first_name,
-                        u.last_name,
-                        u.profile_picture,
-                        COALESCE(l.total_points, 0) as total_points,
-                        COALESCE(l.badges_count, 0) as badges_count,
-                        COALESCE(l.modules_completed, 0) as modules_completed,
-                        COALESCE(l.quizzes_taken, 0) as quizzes_taken,
-                        COALESCE(l.quizzes_passed, 0) as quizzes_passed,
-                        COALESCE(l.avg_quiz_score, 0) as avg_quiz_score,
-                        RANK() OVER (ORDER BY COALESCE(l.total_points, 0) DESC) as rank
-                    FROM users u
-                    LEFT JOIN leaderboard l ON u.id = l.user_id
-                    WHERE l.employer_id = %s
-                )
-                SELECT * FROM ranked_users WHERE id = %s
-                """,
-                (employer_id, current_user['id']),
-                fetch_one=True
+        # Get current user's rank and stats
+        user_stats = execute_query(
+            """
+            WITH ranked_users AS (
+                SELECT 
+                    u.id,
+                    u.first_name,
+                    u.last_name,
+                    u.profile_picture,
+                    COALESCE(l.total_points, 0) as total_points,
+                    COALESCE(l.badges_count, 0) as badges_count,
+                    COALESCE(l.modules_completed, 0) as modules_completed,
+                    COALESCE(l.quizzes_taken, 0) as quizzes_taken,
+                    COALESCE(l.quizzes_passed, 0) as quizzes_passed,
+                    COALESCE(l.avg_quiz_score, 0) as avg_quiz_score,
+                    RANK() OVER (ORDER BY COALESCE(l.total_points, 0) DESC) as rank
+                FROM users u
+                LEFT JOIN leaderboard l ON u.id = l.user_id
+                WHERE COALESCE(l.total_points, 0) > 0
             )
+            SELECT * FROM ranked_users WHERE id = %s
+            """,
+            (current_user['id'],),
+            fetch_one=True
+        )
 
         # Format the response data
         response_data = {
@@ -3289,16 +3245,16 @@ def get_leaderboard(current_user):
 @token_required
 @admin_required
 def initialize_leaderboard(current_user):
-    """Initialize or rebuild leaderboard data for all users with employers"""
+    """Initialize or rebuild leaderboard data for all users"""
     try:
-        # Get all users with employer_id
+        # Get all users (not just those with employer_id)
         users = execute_query(
-            "SELECT id, employer_id FROM users WHERE employer_id IS NOT NULL",
+            "SELECT id FROM users",
             fetch_all=True
         )
         
         for user in users:
-            update_leaderboard(user['id'], user['employer_id'])
+            update_leaderboard(user['id'])
             
         return jsonify({
             'message': f'Leaderboard initialized for {len(users)} users',
@@ -3311,8 +3267,6 @@ def initialize_leaderboard(current_user):
             'message': 'Error initializing leaderboard',
             'error': str(e)
         }), 500
-@token_required
-@trainer_required
 def create_module(current_user):
     data = request.get_json()
     required_fields = ['title', 'category']
@@ -3811,7 +3765,94 @@ def get_offline_content(current_user):
         'total_size': total_size,
         'max_size': app.config['MAX_OFFLINE_CONTENT_SIZE']
     })
+@app.route('/content/<int:content_id>/download', methods=['GET'])
+@token_required
+def download_content_for_offline(current_user, content_id):
+    """Download content for offline use"""
+    try:
+        # Verify content exists
+        content = execute_query(
+            "SELECT * FROM module_content WHERE id = %s",
+            (content_id,),
+            fetch_one=True
+        )
+        if not content:
+            return jsonify({'message': 'Content not found'}), 404
 
+        # Check if content is already downloaded
+        offline_path = os.path.join(
+            app.config['OFFLINE_CONTENT_DIR'],
+            str(current_user['id']),
+            str(content_id)
+        )
+        
+        if os.path.exists(offline_path):
+            return jsonify({
+                'message': 'Content already downloaded',
+                'content_id': content_id
+            }), 200
+
+        # Create user's offline directory if it doesn't exist
+        user_dir = os.path.join(app.config['OFFLINE_CONTENT_DIR'], str(current_user['id']))
+        os.makedirs(user_dir, exist_ok=True)
+
+        # Check storage space
+        current_size = calculate_offline_size(current_user['id'])
+        if current_size + content.get('size', 0) > app.config['MAX_OFFLINE_CONTENT_SIZE']:
+            return jsonify({
+                'message': 'Not enough storage space',
+                'available': app.config['MAX_OFFLINE_CONTENT_SIZE'] - current_size,
+                'required': content.get('size', 0)
+            }), 400
+
+        # Handle different content types
+        if content['content_type'] == 'video' and content.get('url'):
+            # Download video
+            response = requests.get(content['url'], stream=True)
+            if response.status_code == 200:
+                with open(offline_path, 'wb') as f:
+                    for chunk in response.iter_content(1024):
+                        f.write(chunk)
+            else:
+                return jsonify({'message': 'Failed to download video'}), 400
+        elif content['content_type'] == 'document' and content.get('file_path'):
+            # Copy document
+            shutil.copy2(content['file_path'], offline_path)
+        else:
+            # For other types, save metadata
+            with open(offline_path, 'w') as f:
+                json.dump(content, f)
+
+        return jsonify({
+            'message': 'Content downloaded for offline use',
+            'content_id': content_id,
+            'size': os.path.getsize(offline_path)
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error downloading content {content_id}: {str(e)}")
+        return jsonify({'message': 'Error downloading content'}), 500
+@app.route('/offline-content/check/<int:content_id>', methods=['GET'])
+@token_required
+def check_offline_content(current_user, content_id):
+    """Check if content is available offline"""
+    offline_path = os.path.join(
+        app.config['OFFLINE_CONTENT_DIR'],
+        str(current_user['id']),
+        str(content_id)
+    )
+    
+    content = execute_query(
+        "SELECT * FROM module_content WHERE id = %s",
+        (content_id,),
+        fetch_one=True
+    )
+    
+    return jsonify({
+        'isAvailable': os.path.exists(offline_path),
+        'contentId': content_id,
+        'estimatedSize': content.get('size', 0) if content else 0
+    })
 @app.route('/offline-content/<int:content_id>', methods=['DELETE'])
 @token_required
 def delete_offline_content(current_user, content_id):

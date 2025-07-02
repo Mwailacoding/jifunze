@@ -76,6 +76,40 @@ export const OfflineContentPage: React.FC = () => {
     }
   };
 
+  const handleDownloadContent = async (contentId: number) => {
+    try {
+      setIsLoading(true);
+
+      // First check if content is already downloaded
+      const offlineCheck = await apiClient.checkOfflineContent(contentId);
+      if (offlineCheck.isAvailable) {
+        showSuccess('Content Available', 'This content is already available offline');
+        return;
+      }
+
+      // Check storage space
+      if (offlineData &&
+          (offlineData.total_size + offlineCheck.estimatedSize) > offlineData.max_size) {
+        showError('Storage Full', 'Not enough space to download this content');
+        return;
+      }
+
+      // Download the content
+      await apiClient.downloadContentForOffline(contentId);
+      showSuccess('Download Complete', 'Content is now available offline');
+
+      // Refresh offline content list
+      const data = await apiClient.getOfflineContent();
+      setOfflineData(data);
+    } catch (error) {
+      showError('Download Failed', 'Could not download content for offline use');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Example usage of handleDownloadContent
+
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;

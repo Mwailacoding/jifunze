@@ -949,6 +949,19 @@ class ApiClient {
       throw new Error('Failed to mark content as complete');
     }
   }
+
+  // Add methods to apiClient
+  async downloadContentForOffline(contentId: number): Promise<Blob> {
+    const response = await this.axios.get(`/content/${contentId}/download`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  }
+
+  async checkOfflineContent(contentId: number): Promise<{ isAvailable: boolean; estimatedSize: number }> {
+    const response = await this.axios.get(`/offline-content/check/${contentId}`);
+    return response.data;
+  }
 }
 
 export const apiClient = new ApiClient();
