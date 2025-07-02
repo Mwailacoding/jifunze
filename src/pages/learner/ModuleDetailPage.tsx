@@ -269,22 +269,22 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
         const updatedModule = transformModuleData(apiData);
         setModule(updatedModule);
       }
-
+  
       if (content.content_type === 'quiz') {
         try {
-          const { quiz, questions, user_result } = await apiClient.getContentQuiz(content.id);
+          const quizData = await apiClient.getContentQuiz(content.id);
           
-          setQuizData({
-            ...quiz,
-            questions,
-            user_result
-          });
-          
+          // Ensure questions array exists
+          if (!quizData.questions) {
+            quizData.questions = [];
+          }
+  
+          setQuizData(quizData);
           setShowQuiz(true);
           setIsContentModalOpen(false);
           
           const initialAnswers: Record<number, string> = {};
-          questions.forEach((question: any) => {
+          quizData.questions.forEach((question: any) => {
             initialAnswers[question.id] = '';
           });
           setQuizAnswers(initialAnswers);
@@ -297,7 +297,6 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
       showError('Error', 'Failed to update progress');
     }
   };
-
   const handleDownloadContent = async (content: ModuleContent) => {
     try {
       await apiClient.downloadContent(content.id);

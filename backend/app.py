@@ -3583,8 +3583,9 @@ def get_content_quiz(current_user, content_id):
             fetch_one=True
         )
 
+        # Structure the response to match frontend expectations
         response = {
-            'quiz': quiz,
+            **quiz,  # Include all quiz fields at the top level
             'questions': questions,
             'user_result': user_result
         }
