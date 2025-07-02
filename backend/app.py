@@ -1862,13 +1862,21 @@ def get_content_questions(current_user, content_id):
             fetch_all=True
         )
         
-        # Convert options from JSON string to array if needed
+        # Convert options from bytes/JSON string to array if needed
         for question in questions:
-            if isinstance(question['options'], str):
+            if isinstance(question['options'], bytes):
+                try:
+                    question['options'] = json.loads(question['options'].decode('utf-8'))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    question['options'] = []
+            elif isinstance(question['options'], str):
                 try:
                     question['options'] = json.loads(question['options'])
                 except json.JSONDecodeError:
                     question['options'] = []
+        
+        # Use the existing serialization function to handle any remaining bytes
+        questions = dict_to_json_serializable(questions)
         
         return jsonify(questions), 200
     except Exception as e:

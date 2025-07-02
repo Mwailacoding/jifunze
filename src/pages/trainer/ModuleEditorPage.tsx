@@ -233,14 +233,7 @@ export const ModuleEditorPage: React.FC = () => {
       setIsLoading(true);
       // Fetch the specific content with its questions
       const response = await apiClient.get<Content>(`/content/${content.id}/questions`);
-      
-      // Transform the response data if needed
-      const questions = response.map(q => ({
-        ...q,
-        options: Array.isArray(q.options) ? q.options : JSON.parse(q.options || '[]')
-      }));
-      
-      setEditingContent(content);
+      const questions = response.questions || [];
       setCurrentQuestions(questions);
       
       // Also update the newContent state with quiz settings
@@ -302,8 +295,8 @@ export const ModuleEditorPage: React.FC = () => {
       }
       
       // Refresh the questions list
-      const { data } = await apiClient.get(`/content/${editingContent.id}/questions`);
-      setCurrentQuestions(data);
+      const response = await apiClient.get<Question[]>(`/content/${editingContent.id}/questions`);
+      setCurrentQuestions(response);
       
       // Reset the form
       setIsQuestionModalOpen(false);
