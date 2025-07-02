@@ -454,6 +454,18 @@ def generate_certificate_pdf(certificate_data, preview=False):
 
     buffer.seek(0)
     return buffer
+def extract_youtube_id(url):
+    """Extract YouTube video ID from various URL formats"""
+    patterns = [
+        r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([^&]+)',
+        r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([^?]+)',
+        r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^\/]+)'
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match and match.group(1):
+            return match.group(1)
+    return None
 def update_leaderboard(user_id):
     """Debug-friendly leaderboard updater with comprehensive logging"""
     try:
@@ -1358,7 +1370,8 @@ def get_modules(current_user):
 @app.route('/modules/<int:module_id>', methods=['GET'])
 @token_required
 def get_module(current_user, module_id):
-    """Get module details with content and quiz requirements"""
+    """Get module details with content, youtube video info, quiz requirements, and user progress"""
+    # Get module basic info
     module = execute_query(
         "SELECT * FROM modules WHERE id = %s AND is_active = TRUE",
         (module_id,),
@@ -1368,9 +1381,17 @@ def get_module(current_user, module_id):
     if not module:
         return jsonify({'message': 'Module not found'}), 404
 
-    # Get all content for this module in order
+    # Get all content for this module with youtube video info if available
     contents = execute_query(
-        "SELECT * FROM module_content WHERE module_id = %s ORDER BY display_order",
+        """SELECT mc.*, 
+                  yv.youtube_url, 
+                  yv.youtube_video_id,
+                  yv.title as video_title,
+                  yv.duration as video_duration
+           FROM module_content mc
+           LEFT JOIN youtube_videos yv ON mc.id = yv.content_id
+           WHERE mc.module_id = %s
+           ORDER BY mc.display_order""",
         (module_id,),
         fetch_all=True
     )
@@ -1382,20 +1403,32 @@ def get_module(current_user, module_id):
         fetch_one=True
     )
 
-    # Get user's progress for each content item
+    # Format contents and add user progress info
+    formatted_contents = []
     for content in contents:
+        # Get user's progress for each content item
         progress = execute_query(
             "SELECT * FROM user_progress WHERE user_id = %s AND content_id = %s",
             (current_user['id'], content['id']),
             fetch_one=True
         )
-        content['user_progress'] = progress if progress else {
-            'status': 'not_started',
-            'progress': 0
+        
+        # Format content with youtube info if video type
+        content_data = {
+            **content,
+            'user_progress': progress if progress else {
+                'status': 'not_started',
+                'progress': 0
+            },
+            'offline_available': check_offline_access(current_user['id'], content['id']),
+            'youtube_video': {
+                'url': content['youtube_url'],
+                'id': content['youtube_video_id'],
+                'title': content['video_title'],
+                'duration': content['video_duration']
+            } if content['content_type'] == 'video' else None
         }
-
-        # Check if content is available offline
-        content['offline_available'] = check_offline_access(current_user['id'], content['id'])
+        formatted_contents.append(content_data)
 
     # Check if user has completed the module quiz
     quiz_completed = False
@@ -1410,7 +1443,7 @@ def get_module(current_user, module_id):
     # Check if all content is completed
     all_content_completed = all(
         content['user_progress']['status'] == 'completed' 
-        for content in contents
+        for content in formatted_contents
     )
 
     # Module is only complete when both content and quiz are done
@@ -1425,7 +1458,7 @@ def get_module(current_user, module_id):
 
     return jsonify({
         'module': module,
-        'contents': contents,
+        'contents': formatted_contents,
         'quiz': quiz,
         'module_completed': module_completed,
         'quiz_completed': quiz_completed,
@@ -3339,47 +3372,36 @@ def create_module(current_user):
 @trainer_required
 def add_module_content(current_user, module_id):
     data = request.get_json()
-    required_fields = ['content_type', 'title', 'display_order']
-    if not all(field in data for field in required_fields):
-        return jsonify({'message': 'Content type, title and display order are required'}), 400
+    
+    # Validate YouTube URL if content is video
+    if data.get('content_type') == 'video' and data.get('youtube_video_id'):
+        youtube_url = data['youtube_video_id']
+        
+        # Verify it's a valid YouTube URL
+        if not any(domain in youtube_url for domain in ['youtube.com', 'youtu.be']):
+            return jsonify({'message': 'Invalid YouTube URL'}), 400
+            
+        video_id = extract_youtube_id(youtube_url)
+        if not video_id:
+            return jsonify({'message': 'Could not extract YouTube video ID'}), 400
 
-    if current_user['role'] == 'trainer':
-        result = execute_query(
-            "SELECT 1 FROM modules WHERE id = %s AND created_by = %s",
-            (module_id, current_user['id']),
-            fetch_one=True
-        )
-        if not result:
-            return jsonify({'message': 'Module not found or unauthorized'}), 404
-
+    # Proceed with content creation
     content_id = execute_query(
-        "INSERT INTO module_content (module_id, content_type, title, description, "
-        "url, file_path, duration, display_order, is_downloadable) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-        (
-            module_id, data['content_type'], data['title'], data.get('description'),
-            data.get('url'), data.get('file_path'), data.get('duration'),
-            data['display_order'], data.get('is_downloadable', False)
-        ),
+        "INSERT INTO module_content (...) VALUES (...)",
+        (...),
         lastrowid=True
     )
 
-    if data['content_type'] == 'video' and data.get('youtube_video_id'):
+    # Handle YouTube video data
+    if data.get('content_type') == 'video' and data.get('youtube_video_id'):
         execute_query(
-            "INSERT INTO youtube_videos (content_id, youtube_video_id, title, "
-            "channel_name, duration, thumbnail_url) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (
-                content_id, data['youtube_video_id'], data.get('video_title', data['title']),
-                data.get('channel_name'), data.get('duration'), data.get('thumbnail_url')
-            )
+            """INSERT INTO youtube_videos 
+               (content_id, youtube_url, youtube_video_id, ...) 
+               VALUES (%s, %s, %s, ...)""",
+            (content_id, youtube_url, video_id, ...)
         )
 
-    return jsonify({
-        'message': 'Content added successfully',
-        'content_id': content_id
-    }), 201
-
+    return jsonify({'message': 'Content added successfully', 'content_id': content_id}), 201
 @app.route('/modules/<int:module_id>/activate', methods=['PUT'])
 @token_required
 @trainer_required
@@ -3811,71 +3833,36 @@ def get_offline_content(current_user):
     })
 @app.route('/content/<int:content_id>/download', methods=['GET'])
 @token_required
-def download_content_for_offline(current_user, content_id):
-    """Download content for offline use"""
-    try:
-        # Verify content exists
-        content = execute_query(
-            "SELECT * FROM module_content WHERE id = %s",
-            (content_id,),
-            fetch_one=True
-        )
-        if not content:
-            return jsonify({'message': 'Content not found'}), 404
+def download_content(current_user, content_id):
+    """Return content URL (or YouTube embed URL if video)"""
+    content = execute_query(
+        "SELECT * FROM module_content WHERE id = %s",
+        (content_id,),
+        fetch_one=True
+    )
+    if not content:
+        return jsonify({'message': 'Content not found'}), 404
 
-        # Check if content is already downloaded
-        offline_path = os.path.join(
-            app.config['OFFLINE_CONTENT_DIR'],
-            str(current_user['id']),
-            str(content_id)
-        )
-        
-        if os.path.exists(offline_path):
-            return jsonify({
-                'message': 'Content already downloaded',
-                'content_id': content_id
-            }), 200
-
-        # Create user's offline directory if it doesn't exist
-        user_dir = os.path.join(app.config['OFFLINE_CONTENT_DIR'], str(current_user['id']))
-        os.makedirs(user_dir, exist_ok=True)
-
-        # Check storage space
-        current_size = calculate_offline_size(current_user['id'])
-        if current_size + content.get('size', 0) > app.config['MAX_OFFLINE_CONTENT_SIZE']:
-            return jsonify({
-                'message': 'Not enough storage space',
-                'available': app.config['MAX_OFFLINE_CONTENT_SIZE'] - current_size,
-                'required': content.get('size', 0)
-            }), 400
-
-        # Handle different content types
-        if content['content_type'] == 'video' and content.get('url'):
-            # Download video
-            response = requests.get(content['url'], stream=True)
-            if response.status_code == 200:
-                with open(offline_path, 'wb') as f:
-                    for chunk in response.iter_content(1024):
-                        f.write(chunk)
-            else:
-                return jsonify({'message': 'Failed to download video'}), 400
-        elif content['content_type'] == 'document' and content.get('file_path'):
-            # Copy document
-            shutil.copy2(content['file_path'], offline_path)
-        else:
-            # For other types, save metadata
-            with open(offline_path, 'w') as f:
-                json.dump(content, f)
-
+    # Handle YouTube videos
+    if content.get('content_type') == 'video' and content.get('youtube_video_id'):
+        embed_url = f"https://www.youtube.com/embed/{content['youtube_video_id']}"
         return jsonify({
-            'message': 'Content downloaded for offline use',
-            'content_id': content_id,
-            'size': os.path.getsize(offline_path)
+            'url': embed_url,
+            'type': 'youtube_embed'  # Helps frontend know it's a YouTube video
         })
 
-    except Exception as e:
-        app.logger.error(f"Error downloading content {content_id}: {str(e)}")
-        return jsonify({'message': 'Error downloading content'}), 500
+    # Handle files (PDFs, etc.)
+    if content.get('file_path'):
+        if os.path.exists(content['file_path']):
+            return send_file(content['file_path'], as_attachment=True)
+        else:
+            return jsonify({'message': 'File not found'}), 404
+
+    # Fallback: Return URL if available
+    if content.get('url'):
+        return jsonify({'url': content['url']}), 200
+
+    return jsonify({'message': 'No downloadable content found'}), 400
 @app.route('/offline-content/check/<int:content_id>', methods=['GET'])
 @token_required
 def check_offline_content(current_user, content_id):

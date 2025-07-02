@@ -13,9 +13,7 @@ import {
   CircleDot as DragHandleDots2,
   CheckCircle,
   XCircle,
-  BarChart2,
-  Award,
-  RotateCw
+ 
 } from 'lucide-react';
 import { Layout } from '../../components/layout/Layout';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -148,6 +146,11 @@ export const ModuleEditorPage: React.FC = () => {
     }
   };
 
+  const getEmbedUrl = (youtubeUrl: string) => {
+    const videoId = youtubeUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/)?.[1];
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : '';
+  };
+
   const handleAddContent = async () => {
     try {
       if (!moduleId) {
@@ -155,18 +158,33 @@ export const ModuleEditorPage: React.FC = () => {
         return;
       }
 
+      // Validate YouTube URL if content is video
+      if (newContent.content_type === 'video' && newContent.youtube_video_id) {
+        const youtubeUrl = newContent.youtube_video_id.trim();
+        if (!youtubeUrl.includes('youtube.com') && !youtubeUrl.includes('youtu.be')) {
+          showError('Error', 'Please enter a valid YouTube URL');
+          return;
+        }
+      }
+
       const contentData = {
         ...newContent,
         display_order: contents.length + 1
       };
 
-      await apiClient.post(`/modules/${parseInt(moduleId)}/content`, contentData);
-      showSuccess('Content Added', 'Content has been added successfully');
+      if (editingContent) {
+        await apiClient.put(`/content/${editingContent.id}`, contentData);
+        showSuccess('Content Updated', 'Content has been updated successfully');
+      } else {
+        await apiClient.post(`/modules/${parseInt(moduleId)}/content`, contentData);
+        showSuccess('Content Added', 'Content has been added successfully');
+      }
       
       const data = await apiClient.get<Module>(`/modules/${parseInt(moduleId)}`);
       setContents(data.contents || []);
       
       setIsContentModalOpen(false);
+      setEditingContent(null);
       setNewContent({
         content_type: 'video',
         title: '',
@@ -180,7 +198,7 @@ export const ModuleEditorPage: React.FC = () => {
         attempts_limit: 3
       });
     } catch (error) {
-      showError('Error', 'Failed to add content');
+      showError('Error', 'Failed to save content');
     }
   };
 
@@ -226,14 +244,20 @@ export const ModuleEditorPage: React.FC = () => {
         content_id: editingContent.id
       };
 
-      await apiClient.post(`/content/${editingContent.id}/questions`, questionData);
-      showSuccess('Question Added', 'Question has been added successfully');
+      if (editingQuestion) {
+        await apiClient.put(`/questions/${editingQuestion.id}`, questionData);
+        showSuccess('Question Updated', 'Question has been updated successfully');
+      } else {
+        await apiClient.post(`/content/${editingContent.id}/questions`, questionData);
+        showSuccess('Question Added', 'Question has been added successfully');
+      }
       
       const data = await apiClient.get<Module>(`/modules/${parseInt(moduleId!)}`);
       setContents(data.contents || []);
       setCurrentQuestions(data.contents?.find((c: Content) => c.id === editingContent.id)?.questions || []);
       
       setIsQuestionModalOpen(false);
+      setEditingQuestion(null);
       setNewQuestion({
         question_text: '',
         question_type: 'multiple_choice',
@@ -242,7 +266,7 @@ export const ModuleEditorPage: React.FC = () => {
         points: 1
       });
     } catch (error) {
-      showError('Error', 'Failed to add question');
+      showError('Error', 'Failed to save question');
     }
   };
 
@@ -341,7 +365,7 @@ export const ModuleEditorPage: React.FC = () => {
       {/* Header */}
       <div className="mb-8">
         <button
-          onClick={() => navigate('/trainer/modules')}
+          onClick={() => navigate(-1)}
           className="flex items-center space-x-2 text-neutral-600 hover:text-neutral-900 mb-4"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -372,6 +396,8 @@ export const ModuleEditorPage: React.FC = () => {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
+        {/* Add content inside this div or close it properly */}
+      </div>
         {/* Module Settings */}
         <div className="lg:col-span-1">
           <div className="card p-6">
@@ -386,8 +412,8 @@ export const ModuleEditorPage: React.FC = () => {
                   type="text"
                   value={moduleData.title}
                   onChange={(e) => setModuleData(prev => ({ ...prev, title: e.target.value }))}
-                  className="input-field"
-                  placeholder="Enter module title"
+                    className="input-field"
+                    placeholder="Enter module title"
                 />
               </div>
 
@@ -423,8 +449,8 @@ export const ModuleEditorPage: React.FC = () => {
                 <select
                   value={moduleData.difficulty_level}
                   onChange={(e) => setModuleData(prev => ({ 
-                    ...prev, 
-                    difficulty_level: e.target.value as 'beginner' | 'intermediate' | 'advanced' 
+                  ...prev, 
+                  difficulty_level: e.target.value as 'beginner' | 'intermediate' | 'advanced' 
                   }))}
                   className="input-field"
                 >
@@ -432,9 +458,9 @@ export const ModuleEditorPage: React.FC = () => {
                   <option value="intermediate">Intermediate</option>
                   <option value="advanced">Advanced</option>
                 </select>
-              </div>
+                </div>
 
-              <div>
+                <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
                   Estimated Duration (minutes)
                 </label>
@@ -445,303 +471,25 @@ export const ModuleEditorPage: React.FC = () => {
                   className="input-field"
                   min="1"
                 />
-              </div>
+                </div>
 
-              <div>
+                <div>
                 <label className="flex items-center space-x-2">
                   <input
-                    type="checkbox"
-                    checked={moduleData.is_active ?? true}
-                    onChange={(e) => setModuleData(prev => ({ ...prev, is_active: e.target.checked }))}
-                    className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+                  type="checkbox"
+                  checked={moduleData.is_active ?? true}
+                  onChange={(e) => setModuleData(prev => ({ ...prev, is_active: e.target.checked }))}
+                  className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
                   />
                   <span className="text-sm font-medium text-neutral-700">Active Module</span>
                 </label>
                 <p className="text-xs text-neutral-600 mt-1">
                   Only active modules are visible to learners
                 </p>
+                </div>
+              </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Module Content */}
-        <div className="lg:col-span-2">
-          <div className="card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold text-neutral-900">Module Content</h2>
-              <button
-                onClick={() => setIsContentModalOpen(true)}
-                disabled={!moduleId}
-                className="btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Content</span>
-              </button>
-            </div>
-
-            {!moduleId && (
-              <div className="text-center py-8 bg-neutral-50 rounded-lg mb-6">
-                <BookOpen className="w-12 h-12 text-neutral-400 mx-auto mb-4" />
-                <p className="text-neutral-600 mb-2">Save the module first to add content</p>
-                <p className="text-sm text-neutral-500">
-                  You need to create the module before you can add lessons, videos, and quizzes.
-                </p>
-              </div>
-            )}
-
-            {contents.length > 0 ? (
-              <div className="space-y-3">
-                {contents.map((content, index) => {
-                  const Icon = getContentIcon(content.content_type);
-                  
-                  return (
-                    <div key={content.id} className="flex items-center space-x-4 p-4 bg-neutral-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className="text-sm font-medium text-neutral-500 w-6">
-                          {index + 1}
-                        </div>
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br ${getContentTypeColor(content.content_type)}`}>
-                          <Icon className="w-5 h-5 text-white" />
-                        </div>
-                      </div>
-
-                      <div className="flex-1">
-                        <h3 className="font-medium text-neutral-900 mb-1">{content.title}</h3>
-                        <div className="flex items-center space-x-4 text-xs text-neutral-500">
-                          <span className="capitalize">{content.content_type}</span>
-                          {content.duration && (
-                            <span>{content.duration} min</span>
-                          )}
-                          {content.is_downloadable && (
-                            <span className="text-primary-600">Downloadable</span>
-                          )}
-                          {content.content_type === 'quiz' && (
-                            <span className="flex items-center space-x-1">
-                              <Award className="w-3 h-3" />
-                              <span>Pass: {content.passing_score || 70}%</span>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        <button className="p-2 text-neutral-400 hover:text-neutral-600 rounded-lg hover:bg-neutral-200">
-                          <DragHandleDots2 className="w-4 h-4" />
-                        </button>
-                        {content.content_type === 'quiz' ? (
-                          <button 
-                            onClick={() => handleEditQuiz(content)}
-                            className="p-2 text-neutral-400 hover:text-primary-600 rounded-lg hover:bg-primary-50"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => handleEditContent(content)}
-                            className="p-2 text-neutral-400 hover:text-primary-600 rounded-lg hover:bg-primary-50"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button 
-                          onClick={() => handleDeleteContent(content.id)}
-                          className="p-2 text-neutral-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : moduleId ? (
-              <div className="text-center py-8">
-                <BookOpen className="w-12 h-12 text-neutral-400 mx-auto mb-4" />
-                <p className="text-neutral-600 mb-4">No content added yet</p>
-                <button
-                  onClick={() => setIsContentModalOpen(true)}
-                  className="btn-primary"
-                >
-                  Add Your First Content
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      {/* Add Content Modal */}
-      <Modal
-        isOpen={isContentModalOpen}
-        onClose={() => {
-          setIsContentModalOpen(false);
-          setEditingContent(null);
-          setNewContent({
-            content_type: 'video',
-            title: '',
-            description: '',
-            url: '',
-            youtube_video_id: '',
-            duration: 0,
-            display_order: 1,
-            is_downloadable: false,
-            passing_score: 70,
-            attempts_limit: 3
-          });
-        }}
-        title={editingContent ? 'Edit Content' : 'Add New Content'}
-        size="lg"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Content Type
-            </label>
-            <select
-              value={newContent.content_type}
-              onChange={(e) => setNewContent(prev => ({ ...prev, content_type: e.target.value }))}
-              className="input-field"
-            >
-              <option value="video">Video</option>
-              <option value="document">Document</option>
-              <option value="html">HTML Content</option>
-              <option value="quiz">Quiz</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Title
-            </label>
-            <input
-              type="text"
-              value={newContent.title}
-              onChange={(e) => setNewContent(prev => ({ ...prev, title: e.target.value }))}
-              className="input-field"
-              placeholder="Enter content title"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Description
-            </label>
-            <textarea
-              value={newContent.description}
-              onChange={(e) => setNewContent(prev => ({ ...prev, description: e.target.value }))}
-              className="input-field min-h-20"
-              placeholder="Describe this content"
-            />
-          </div>
-
-          {newContent.content_type === 'video' && (
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                YouTube Video ID
-              </label>
-              <input
-                type="text"
-                value={newContent.youtube_video_id}
-                onChange={(e) => setNewContent(prev => ({ ...prev, youtube_video_id: e.target.value }))}
-                className="input-field"
-                placeholder="e.g., dQw4w9WgXcQ"
-              />
-              <p className="text-xs text-neutral-600 mt-1">
-                Extract the video ID from the YouTube URL (the part after v=)
-              </p>
-            </div>
-          )}
-
-          {newContent.content_type !== 'quiz' && (
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                URL (Optional)
-              </label>
-              <input
-                type="url"
-                value={newContent.url}
-                onChange={(e) => setNewContent(prev => ({ ...prev, url: e.target.value }))}
-                className="input-field"
-                placeholder="https://example.com/resource"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Duration (minutes)
-            </label>
-            <input
-              type="number"
-              value={newContent.duration}
-              onChange={(e) => setNewContent(prev => ({ ...prev, duration: parseInt(e.target.value) }))}
-              className="input-field"
-              min="0"
-            />
-          </div>
-
-          {newContent.content_type === 'quiz' && (
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Passing Score (%)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={newContent.passing_score}
-                  onChange={(e) => setNewContent(prev => ({ ...prev, passing_score: parseInt(e.target.value) }))}
-                  className="input-field"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Attempts Limit
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={newContent.attempts_limit}
-                  onChange={(e) => setNewContent(prev => ({ ...prev, attempts_limit: parseInt(e.target.value) }))}
-                  className="input-field"
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                checked={newContent.is_downloadable}
-                onChange={(e) => setNewContent(prev => ({ ...prev, is_downloadable: e.target.checked }))}
-                className="rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm font-medium text-neutral-700">Allow offline download</span>
-            </label>
-          </div>
-
-          <div className="flex space-x-3 pt-4">
-            <button
-              onClick={editingContent ? handleAddContent : handleAddContent}
-              className="btn-primary flex-1"
-            >
-              {editingContent ? 'Update Content' : 'Add Content'}
-            </button>
-            <button
-              onClick={() => {
-                setIsContentModalOpen(false);
-                setEditingContent(null);
-              }}
-              className="btn-outline flex-1"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Quiz Questions Modal */}
       {editingContent?.content_type === 'quiz' && (
@@ -1046,7 +794,7 @@ export const ModuleEditorPage: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={editingQuestion ? handleAddQuestion : handleAddQuestion}
+              onClick={handleAddQuestion}
               disabled={!newQuestion.question_text || !newQuestion.correct_answer}
               className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >

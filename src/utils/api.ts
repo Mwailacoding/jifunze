@@ -30,7 +30,24 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Function to add questions to a content item
+// Content interfaces and functions
+export interface Content {
+  id: number;
+  content_type: 'video' | 'document' | 'quiz' | 'html';
+  title: string;
+  description?: string;
+  url?: string;
+  file_path?: string;
+  duration?: number;
+  display_order: number;
+  is_downloadable: boolean;
+  youtube_video_id?: string;
+  thumbnail_url?: string;
+  passing_score?: number; // For quizzes
+  attempts_limit?: number; // For quizzes
+  questions?: ContentQuestion[]; // For quizzes
+}
+
 export interface ContentQuestion {
   question_text: string;
   question_type: 'multiple_choice' | 'true_false' | 'short_answer';
@@ -47,15 +64,68 @@ export interface AddContentQuestionsResponse {
   questions_added: number;
 }
 
+// Function to extract YouTube video ID from URL
+export const extractYouTubeId = (url: string): string | null => {
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : null;
+};
+
+// Function to get YouTube embed URL
+export const getYouTubeEmbedUrl = (youtubeId: string): string => {
+  return `https://www.youtube.com/embed/${youtubeId}?rel=0&showinfo=0`;
+};
+
+// Function to get YouTube thumbnail URL
+export const getYouTubeThumbnailUrl = (youtubeId: string): string => {
+  return `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`;
+};
+
 export const addContentQuestions = async (
   contentId: number,
   questions: ContentQuestion[]
 ): Promise<AddContentQuestionsResponse> => {
   try {
-    const response = await api.post<AddContentQuestionsResponse>(`/content/${contentId}/questions`, { questions });
+    const response = await api.post<AddContentQuestionsResponse>(
+      `/content/${contentId}/questions`, 
+      { questions }
+    );
     return response.data;
   } catch (error: any) {
     console.error('Error adding questions:', error.response?.data?.message || error.message);
+    throw error;
+  }
+};
+
+export const addYouTubeContent = async (
+  moduleId: number,
+  contentData: {
+    title: string;
+    description?: string;
+    youtube_url: string;
+    duration?: number;
+    is_downloadable?: boolean;
+    display_order?: number;
+  }
+): Promise<{ message: string; content: Content }> => {
+  try {
+    // Extract YouTube ID from URL
+    const youtubeId = extractYouTubeId(contentData.youtube_url);
+    if (!youtubeId) {
+      throw new Error('Invalid YouTube URL');
+    }
+
+    const response = await api.post<{ message: string; content: Content }>(
+      `/modules/${moduleId}/content/youtube`,
+      {
+        ...contentData,
+        youtube_video_id: youtubeId,
+        content_type: 'video'
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+    console.error('Error adding YouTube content:', error.response?.data?.message || error.message);
     throw error;
   }
 };
@@ -105,6 +175,8 @@ export interface ModuleContent {
   duration?: number;
   display_order: number;
   is_downloadable: boolean;
+  youtube_video_id?: string;
+  thumbnail_url?: string;
   user_progress?: {
     status: 'not_started' | 'in_progress' | 'completed';
     progress: number;
@@ -112,13 +184,6 @@ export interface ModuleContent {
     last_accessed?: string;
   };
   offline_available?: boolean;
-  youtube_video?: {
-    youtube_video_id: string;
-    title: string;
-    channel_name: string;
-    duration: number;
-    thumbnail_url: string;
-  };
 }
 
 export interface Progress {
@@ -595,6 +660,38 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(contentData),
     });
+  }
+
+  // YouTube-specific methods
+  async addYouTubeContent(
+    moduleId: number,
+    contentData: {
+      title: string;
+      description?: string;
+      youtube_url: string;
+      duration?: number;
+      is_downloadable?: boolean;
+      display_order?: number;
+    }
+  ): Promise<{ message: string; content: Content }> {
+    return this.post<{ message: string; content: Content }>(
+      `/modules/${moduleId}/content/youtube`,
+      contentData
+    );
+  }
+
+  async getYouTubeVideoInfo(youtubeId: string): Promise<{
+    title: string;
+    channel: string;
+    duration: number;
+    thumbnail_url: string;
+  }> {
+    return this.get<{
+      title: string;
+      channel: string;
+      duration: number;
+      thumbnail_url: string;
+    }>(`/youtube/video/${youtubeId}`);
   }
 
   // Progress endpoints
