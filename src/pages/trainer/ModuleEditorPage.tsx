@@ -233,8 +233,22 @@ export const ModuleEditorPage: React.FC = () => {
       setIsLoading(true);
       // Fetch the specific content with its questions
       const response = await apiClient.get<Content>(`/content/${content.id}/questions`);
-      setEditingContent(response);
-      setCurrentQuestions(response.questions || []);
+      
+      // Transform the response data if needed
+      const questions = response.map(q => ({
+        ...q,
+        options: Array.isArray(q.options) ? q.options : JSON.parse(q.options || '[]')
+      }));
+      
+      setEditingContent(content);
+      setCurrentQuestions(questions);
+      
+      // Also update the newContent state with quiz settings
+      setNewContent(prev => ({
+        ...prev,
+        passing_score: content.passing_score || 70,
+        attempts_limit: content.attempts_limit || 3
+      }));
     } catch (error) {
       showError('Error', 'Failed to load quiz questions');
       console.error('Error loading questions:', error);
@@ -271,12 +285,14 @@ export const ModuleEditorPage: React.FC = () => {
   const handleAddQuestion = async () => {
     try {
       if (!editingContent) return;
-
+  
+      // Prepare question data with properly stringified options if needed
       const questionData = {
         ...newQuestion,
+        options: newQuestion.options, // Ensure this is an array
         content_id: editingContent.id
       };
-
+  
       if (editingQuestion) {
         await apiClient.put(`/questions/${editingQuestion.id}`, questionData);
         showSuccess('Question Updated', 'Question has been updated successfully');
@@ -285,10 +301,11 @@ export const ModuleEditorPage: React.FC = () => {
         showSuccess('Question Added', 'Question has been added successfully');
       }
       
-      const data = await apiClient.get<Module>(`/modules/${parseInt(moduleId!)}`);
-      setContents(data.contents || []);
-      setCurrentQuestions(data.contents?.find((c: Content) => c.id === editingContent.id)?.questions || []);
+      // Refresh the questions list
+      const { data } = await apiClient.get(`/content/${editingContent.id}/questions`);
+      setCurrentQuestions(data);
       
+      // Reset the form
       setIsQuestionModalOpen(false);
       setEditingQuestion(null);
       setNewQuestion({
@@ -300,9 +317,9 @@ export const ModuleEditorPage: React.FC = () => {
       });
     } catch (error) {
       showError('Error', 'Failed to save question');
+      console.error('Error saving question:', error);
     }
   };
-
   const handleDeleteQuestion = async (questionId: number) => {
     try {
       await apiClient.delete(`/questions/${questionId}`);

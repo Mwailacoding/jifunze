@@ -1842,109 +1842,104 @@ def get_next_module(current_user, module_id):
 
 @app.route('/content/<int:content_id>/questions', methods=['GET'])
 @token_required
-@trainer_required
 def get_content_questions(current_user, content_id):
     """Get all questions for a specific content item"""
     try:
-        # Verify ownership
+        # Verify content exists and is accessible
         content = execute_query(
-            "SELECT 1 FROM module_content mc "
-            "JOIN modules m ON mc.module_id = m.id "
-            "WHERE mc.id = %s AND m.created_by = %s",
-            (content_id, current_user['id']),
+            "SELECT 1 FROM module_content WHERE id = %s",
+            (content_id,),
             fetch_one=True
         )
         if not content:
-            return jsonify({'message': 'Content not found or unauthorized'}), 404
+            return jsonify({'message': 'Content not found'}), 404
 
+        # Get questions with proper serialization
         questions = execute_query(
-            "SELECT * FROM content_questions WHERE content_id = %s",
+            "SELECT id, question_text, question_type, options, correct_answer, points "
+            "FROM content_questions WHERE content_id = %s",
             (content_id,),
             fetch_all=True
         )
         
+        # Convert options from JSON string to array if needed
+        for question in questions:
+            if isinstance(question['options'], str):
+                try:
+                    question['options'] = json.loads(question['options'])
+                except json.JSONDecodeError:
+                    question['options'] = []
+        
         return jsonify(questions), 200
     except Exception as e:
         app.logger.error(f"Error getting content questions: {str(e)}")
-        return jsonify({'message': 'Error getting questions'}), 500
-    
+        return jsonify({'message': 'Error getting questions'}), 500    
 @app.route('/content/<int:content_id>/questions', methods=['POST'])
 @token_required
 @trainer_required
 def add_content_question(current_user, content_id):
     """Add a question to a specific content item"""
-    
     try:
-        app.logger.info(f"Received request for content_id: {content_id}, user_id: {current_user['id']}")
-        app.logger.info(f"Request JSON: {request.get_json()}")
-
-        # Check if request has JSON data
+        app.logger.info(f"Adding question to content {content_id}")
+        
         if not request.is_json:
             app.logger.error("Request is not JSON")
             return jsonify({'message': 'Request must be JSON'}), 400
 
         question = request.get_json()
         
-        # Validate that we received a single question object
-        if not isinstance(question, dict):
-            app.logger.error("Request body is not a question object")
-            return jsonify({'message': 'Request body must be a single question object'}), 400
+        # Validate required fields
+        required_fields = ['question_text', 'question_type', 'options', 'correct_answer']
+        missing_fields = [field for field in required_fields if field not in question]
+        if missing_fields:
+            app.logger.error(f"Missing fields: {missing_fields}")
+            return jsonify({'message': f'Missing required fields: {", ".join(missing_fields)}'}), 400
+            
+        # Validate question type
+        if question['question_type'] not in ['multiple_choice', 'true_false', 'short_answer']:
+            app.logger.error(f"Invalid question type: {question['question_type']}")
+            return jsonify({'message': 'Invalid question type'}), 400
+            
+        # Validate options
+        if not isinstance(question['options'], list):
+            app.logger.error("Options is not a list")
+            return jsonify({'message': 'Options must be an array'}), 400
 
-        # Verify the trainer owns this content
-        result = execute_query(
-            "SELECT 1 FROM module_content mc "
+        # Verify content exists and belongs to this trainer
+        content = execute_query(
+            "SELECT mc.id FROM module_content mc "
             "JOIN modules m ON mc.module_id = m.id "
             "WHERE mc.id = %s AND m.created_by = %s",
             (content_id, current_user['id']),
             fetch_one=True
         )
-        if not result:
-            app.logger.error(f"Content {content_id} not found or not owned by user {current_user['id']}")
+        if not content:
+            app.logger.error(f"Content {content_id} not found or unauthorized")
             return jsonify({'message': 'Content not found or unauthorized'}), 404
 
-        # Validate question fields
-        required_fields = ['question_text', 'question_type', 'options', 'correct_answer']
-        missing_fields = [field for field in required_fields if field not in question]
-        if missing_fields:
-            app.logger.error(f"Question missing fields: {missing_fields}")
-            return jsonify({
-                'message': f'Question missing required fields: {", ".join(missing_fields)}'
-            }), 400
-            
-        if question['question_type'] not in ['multiple_choice', 'true_false', 'short_answer']:
-            app.logger.error(f"Invalid question_type '{question['question_type']}'")
-            return jsonify({
-                'message': 'Invalid question_type'
-            }), 400
-            
-        if not isinstance(question['options'], list):
-            app.logger.error("Options is not an array")
-            return jsonify({
-                'message': 'Options must be an array'
-            }), 400
-
-        # Add question to the content
-        execute_query(
+        # Insert question
+        question_id = execute_query(
             "INSERT INTO content_questions (content_id, question_text, question_type, options, correct_answer, points) "
             "VALUES (%s, %s, %s, %s, %s, %s)",
             (
-                content_id, 
-                question['question_text'], 
+                content_id,
+                question['question_text'],
                 question['question_type'],
-                json.dumps(question['options']), 
+                json.dumps(question['options']),
                 question['correct_answer'],
                 question.get('points', 1)
-            )
+            ),
+            lastrowid=True
         )
 
-        app.logger.info(f"Successfully added question to content_id {content_id}")
+        app.logger.info(f"Question {question_id} added to content {content_id}")
         return jsonify({
-            'message': 'Successfully added question',
-            'content_id': content_id
+            'message': 'Question added successfully',
+            'question_id': question_id
         }), 201
 
     except Exception as e:
-        app.logger.error(f"Error adding question to content {content_id}: {str(e)}", exc_info=True)
+        app.logger.error(f"Error adding question: {str(e)}", exc_info=True)
         return jsonify({'message': 'Error adding question'}), 500
 @app.route('/user/certificates/preview/<string:cert_type>/<int:item_id>', methods=['GET'])
 @token_required
