@@ -229,11 +229,19 @@ export const ModuleEditorPage: React.FC = () => {
     }
   };
 
-  const handleEditQuiz = (content: Content): void => {
-    setEditingContent(content);
-    setCurrentQuestions(content.questions || []);
+  const handleEditQuiz = async (content: Content): Promise<void> => {
+    try {
+      setIsLoading(true);
+      const data = await apiClient.get<Module>(`/modules/${parseInt(moduleId!)}`);
+      const updatedContent = data.contents?.find((c: Content) => c.id === content.id);
+      setEditingContent(updatedContent || content);
+      setCurrentQuestions(updatedContent?.questions || []);
+    } catch (error) {
+      showError('Error', 'Failed to load quiz questions');
+    } finally {
+      setIsLoading(false);
+    }
   };
-
   const getContentIcon = (contentType: string): React.ForwardRefExoticComponent<Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>> => {
     switch (contentType) {
       case 'video':
@@ -310,21 +318,26 @@ export const ModuleEditorPage: React.FC = () => {
   const handleSaveQuizSettings = async () => {
     try {
       if (!editingContent) return;
-
+  
+      setIsSaving(true);
+      
+      // Send the complete content object with updated settings
       await apiClient.put(`/content/${editingContent.id}`, {
+        ...editingContent,
         passing_score: newContent.passing_score,
         attempts_limit: newContent.attempts_limit
       });
-
+  
       showSuccess('Settings Saved', 'Quiz settings updated successfully');
       const data = await apiClient.get<Module>(`/modules/${parseInt(moduleId!)}`);
       setContents(data.contents || []);
       setEditingContent(data.contents?.find((c: Content) => c.id === editingContent.id) || null);
     } catch (error) {
       showError('Error', 'Failed to update quiz settings');
+    } finally {
+      setIsSaving(false);
     }
   };
-
   const handleQuestionTypeChange = (type: 'multiple_choice' | 'true_false' | 'short_answer') => {
     setNewQuestion(prev => ({
       ...prev,

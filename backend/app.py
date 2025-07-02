@@ -3964,48 +3964,48 @@ def initialize_leaderboard(current_user):
 
 @app.route('/content/<int:content_id>', methods=['PUT'])
 @token_required
-def update_content_progress(current_user, content_id):
-    print("Headers:", request.headers)
-    print("Body:", request.data)
-    data = request.get_json()
-    print("Parsed JSON:", data)
-    if not data or 'status' not in data:
-        return jsonify({'message': 'Status is required'}), 400
-
-    # Reuse the logic from /progress
-    progress = execute_query(
-        "SELECT * FROM user_progress WHERE user_id = %s AND content_id = %s",
-        (current_user['id'], content_id),
-        fetch_one=True
-    )
-
-    if progress:
-        execute_query(
-            "UPDATE user_progress SET status = %s, current_position = %s, "
-            "completed_at = %s, last_accessed = %s, attempts = %s, score = %s "
-            "WHERE user_id = %s AND content_id = %s",
-            (
-                data['status'], data.get('current_position'),
-                datetime.now(timezone.utc) if data['status'] == 'completed' else None,
-                datetime.now(timezone.utc), data.get('attempts', 0),
-                data.get('score'), current_user['id'], content_id
-            )
+@trainer_required
+def update_content(current_user, content_id):
+    try:
+        data = request.get_json()
+        
+        # Verify content exists and trainer owns it
+        content = execute_query(
+            "SELECT * FROM module_content mc "
+            "JOIN modules m ON mc.module_id = m.id "
+            "WHERE mc.id = %s AND m.created_by = %s",
+            (content_id, current_user['id']),
+            fetch_one=True
         )
-    else:
-        execute_query(
-            "INSERT INTO user_progress (user_id, content_id, status, started_at, "
-            "completed_at, last_accessed, current_position, attempts, score) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            (
-                current_user['id'], content_id, data['status'],
-                datetime.now(timezone.utc),
-                datetime.now(timezone.utc) if data['status'] == 'completed' else None,
-                datetime.now(timezone.utc), data.get('current_position'),
-                data.get('attempts', 0), data.get('score')
-            )
-        )
+        if not content:
+            return jsonify({'message': 'Content not found or unauthorized'}), 404
 
-    return jsonify({'message': 'Progress updated successfully'})
+        # Only update the fields that were provided
+        update_fields = {}
+        if 'passing_score' in data:
+            update_fields['passing_score'] = data['passing_score']
+        if 'attempts_limit' in data:
+            update_fields['attempts_limit'] = data['attempts_limit']
+        if 'title' in data:
+            update_fields['title'] = data['title']
+        if 'description' in data:
+            update_fields['description'] = data['description']
+        # Add other fields as needed
 
+        if not update_fields:
+            return jsonify({'message': 'No fields to update'}), 400
+
+        # Build and execute the update query
+        set_clause = ", ".join([f"{field} = %s" for field in update_fields])
+        query = f"UPDATE module_content SET {set_clause} WHERE id = %s"
+        params = list(update_fields.values()) + [content_id]
+        
+        execute_query(query, params)
+
+        return jsonify({'message': 'Content updated successfully'}), 200
+
+    except Exception as e:
+        app.logger.error(f"Error updating content: {str(e)}")
+        return jsonify({'message': 'Error updating content'}), 500
 if __name__=='__main__':
     app.run(debug=True)
