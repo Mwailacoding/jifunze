@@ -19,7 +19,6 @@ import { ModulesPage } from './pages/learner/ModulesPage';
 import { ModuleDetailPage } from './pages/learner/ModuleDetailPage';
 import { AssignmentsPage } from './pages/learner/AssignmentsPage';
 import { LeaderboardPage } from './pages/learner/LeaderboardPage';
-import { CertificatesPage } from './pages/learner/CertificatesPage';
 import { OfflineContentPage } from './pages/learner/OfflineContentPage';
 import { QuizPage } from './pages/learner/QuizPage';
 
@@ -111,11 +110,6 @@ function App() {
               <Route path="/leaderboard" element={
                 <ProtectedRoute requiredRole="user">
                   <LeaderboardPage />
-                </ProtectedRoute>
-              } />
-              <Route path="/certificates" element={
-                <ProtectedRoute requiredRole="user">
-                  <CertificatesPage />
                 </ProtectedRoute>
               } />
               <Route path="/offline" element={

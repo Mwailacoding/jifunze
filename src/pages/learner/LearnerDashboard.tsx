@@ -55,7 +55,6 @@ export const LearnerDashboard: React.FC = () => {
   const [progressSummary, setProgressSummary] = useState<ProgressSummary | null>(null);
   const [recentModules, setRecentModules] = useState<Module[]>([]);
   const [upcomingAssignments, setUpcomingAssignments] = useState<Assignment[]>([]);
-  const [certificates, setCertificates] = useState<Record<number, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [achievement, setAchievement] = useState<any>(null);
 
@@ -84,14 +83,6 @@ export const LearnerDashboard: React.FC = () => {
             completion_percentage: module.completion_percentage ?? 0
           }))
         );
-
-        // Fetch user certificates
-        const certificatesData = await apiClient.getUserCertificates(user!.id);
-        const certMap = certificatesData.reduce((acc: Record<number, boolean>, cert: any) => {
-          acc[cert.module_id] = true;
-          return acc;
-        }, {});
-        setCertificates(certMap);
 
       } catch (error) {
         showError('Error', 'Failed to load dashboard data');
@@ -218,28 +209,6 @@ export const LearnerDashboard: React.FC = () => {
           </div>
           <div className="text-sm text-neutral-600">
             Unlock more by completing modules
-          </div>
-        </div>
-
-        <div className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <FileText className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-neutral-900">Certificates</h3>
-                <p className="text-sm text-neutral-600">Earned certificates</p>
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-green-600">
-              {Object.keys(certificates).length}
-            </div>
-          </div>
-          <div className="text-sm text-neutral-600">
-            <Link to="/certificates" className="text-green-600 hover:text-green-700 font-medium">
-              View All Certificates
-            </Link>
           </div>
         </div>
       </div>

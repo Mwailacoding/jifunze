@@ -251,13 +251,6 @@ export const ModulesPage: React.FC = () => {
     return 'secondary';
   };
 
-  const getModuleStatus = (module: Module): 'certified' | 'completed' | 'in-progress' | 'not-started' => {
-      if (module.completion_percentage === 100) {
-        return 'completed';
-      }
-      return (module.completion_percentage ?? 0) > 0 ? 'in-progress' : 'not-started';
-  };
-
   if (isLoading) {
     return (
       <Layout>
