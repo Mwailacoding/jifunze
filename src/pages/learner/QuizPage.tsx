@@ -169,7 +169,7 @@ export const QuizPage: React.FC = () => {
         answer: answers[q.id] || ''
       }));
 
-      const result = await apiClient.submitQuiz(quiz.id, submissionAnswers);
+      const result = await apiClient.submitContentQuiz(quiz.id, submissionAnswers);
       setQuizResult(result);
       setShowResults(true);
       

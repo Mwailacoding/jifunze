@@ -728,6 +728,19 @@ class ApiClient {
     });
   }
 
+  async submitContentQuiz(contentId: number, answers: Array<{ question_id: number; answer: string }>): Promise<QuizResult> {
+    // Convert array to dictionary format that backend expects
+    const answersDict: Record<string, string> = {};
+    answers.forEach(item => {
+      answersDict[item.question_id.toString()] = item.answer;
+    });
+    
+    return this.request<QuizResult>(`/content/${contentId}/quiz/submit`, {
+      method: 'POST',
+      body: JSON.stringify({ answers: answersDict }),
+    });
+  }
+
   async createQuiz(quizData: {
     module_id: number;
     title: string;

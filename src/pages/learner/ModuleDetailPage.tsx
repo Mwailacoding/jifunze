@@ -322,7 +322,7 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
         answer: quizAnswers[q.id] || ''
       }));
 
-      const result = await apiClient.submitQuiz(quizData.id, submissionAnswers);
+      const result = await apiClient.submitContentQuiz(quizData.id, submissionAnswers);
       setQuizResult(result);
       setQuizSubmitted(true);
       

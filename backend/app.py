@@ -132,6 +132,10 @@ def dict_to_json_serializable(data):
     else:
         return data
 
+def safe_get(result, key, default=None):
+    """Safely get a value from a dictionary result, returning default if result is None"""
+    return result.get(key, default) if result is not None else default
+
 def execute_query(query, params=None, fetch_one=False, fetch_all=False, lastrowid=False):
     conn = None
     cursor = None
@@ -176,12 +180,13 @@ def check_quiz_badges(user_id, quiz_id, quiz_score):
             badges_awarded.append(badge_id)
     
     # Check for quiz master badge (completed 10 quizzes)
-    quiz_count = execute_query(
+    quiz_count_result = execute_query(
         "SELECT COUNT(DISTINCT quiz_id) as count FROM quiz_results "
         "WHERE user_id = %s AND passed = TRUE",
         (user_id,),
         fetch_one=True
-    )['count']
+    )
+    quiz_count = quiz_count_result['count'] if quiz_count_result else 0
     
     if quiz_count >= 10 and not user_has_badge(user_id, 'quiz_master'):
         award_badge_direct(user_id, 'quiz_master')
@@ -201,22 +206,24 @@ def check_quiz_badges(user_id, quiz_id, quiz_score):
         badge_id = f"{category}_expert"
         
         # Check if user has completed all quizzes in this category
-        category_quiz_count = execute_query(
+        category_quiz_result = execute_query(
             "SELECT COUNT(DISTINCT q.id) as total FROM quizzes q "
             "JOIN modules m ON q.module_id = m.id "
             "WHERE m.category = %s",
             (quiz_category['category'],),
             fetch_one=True
-        )['total']
+        )
+        category_quiz_count = category_quiz_result['total'] if category_quiz_result else 0
         
-        user_category_quiz_count = execute_query(
+        user_category_quiz_result = execute_query(
             "SELECT COUNT(DISTINCT qr.quiz_id) as completed FROM quiz_results qr "
             "JOIN quizzes q ON qr.quiz_id = q.id "
             "JOIN modules m ON q.module_id = m.id "
             "WHERE qr.user_id = %s AND qr.passed = TRUE AND m.category = %s",
             (user_id, quiz_category['category']),
             fetch_one=True
-        )['completed']
+        )
+        user_category_quiz_count = user_category_quiz_result['completed'] if user_category_quiz_result else 0
         
         if (user_category_quiz_count >= category_quiz_count and 
             not user_has_badge(user_id, badge_id)):
@@ -1636,6 +1643,15 @@ def attempt_module_quiz(current_user, module_id):
             fetch_all=True
         )
 
+        # Get previous attempts count
+        attempts_result = execute_query(
+            "SELECT COUNT(*) as attempts FROM quiz_results "
+            "WHERE user_id = %s AND quiz_id = %s",
+            (current_user['id'], quiz['id']),
+            fetch_one=True
+        )
+        previous_attempts = attempts_result['attempts'] if attempts_result else 0
+
         return jsonify({
             'quiz_id': quiz['id'],
             'title': quiz['title'],
@@ -1644,12 +1660,7 @@ def attempt_module_quiz(current_user, module_id):
             'time_limit': quiz['time_limit'],
             'questions': questions,
             'attempts_allowed': quiz.get('attempts_allowed', 3),
-            'previous_attempts': execute_query(
-                "SELECT COUNT(*) as attempts FROM quiz_results "
-                "WHERE user_id = %s AND quiz_id = %s",
-                (current_user['id'], quiz['id']),
-                fetch_one=True
-            )['attempts']
+            'previous_attempts': previous_attempts
         })
 
     except Exception as e:
@@ -3542,38 +3553,113 @@ def get_module_quizzes(current_user, module_id):
 @app.route('/content/<int:content_id>/quiz', methods=['GET'])
 @token_required
 def get_content_quiz(current_user, content_id):
-    """Get quiz for a specific content item through its module"""
+    """Get quiz for a specific content item"""
     try:
-        # Get the module this content belongs to
+        app.logger.info(f"Fetching quiz for content {content_id}")
+        
+        # First, check if this content is a quiz content type
         content = execute_query(
-            "SELECT module_id FROM module_content WHERE id = %s",
+            "SELECT mc.*, m.id as module_id FROM module_content mc "
+            "JOIN modules m ON mc.module_id = m.id "
+            "WHERE mc.id = %s",
             (content_id,),
             fetch_one=True
         )
         if not content:
+            app.logger.warning(f"Content {content_id} not found")
             return jsonify({'message': 'Content not found'}), 404
 
-        # Get quiz for this module
-        quiz = execute_query(
-            "SELECT q.* FROM quizzes q "
-            "JOIN modules m ON q.module_id = m.id "
-            "WHERE q.module_id = %s AND q.is_active = TRUE LIMIT 1",
-            (content['module_id'],),
-            fetch_one=True
-        )
+        app.logger.info(f"Content {content_id} is type: {content.get('content_type')}")
 
-        if not quiz:
-            return jsonify({'message': 'No quiz available for this content'}), 404
+        # If this is a quiz content, get questions directly from content_questions
+        if content.get('content_type') == 'quiz':
+            app.logger.info(f"Content {content_id} is a quiz, getting questions directly")
+            
+            # Get questions for this content
+            questions = execute_query(
+                "SELECT id, question_text, question_type, options, points "
+                "FROM content_questions WHERE content_id = %s",
+                (content_id,),
+                fetch_all=True
+            )
 
-        # Get questions for this quiz (without correct answers)
-        questions = execute_query(
-            "SELECT id, question_text, question_type, options, points "
-            "FROM quiz_questions WHERE quiz_id = %s",
-            (quiz['id'],),
-            fetch_all=True
-        )
+            # Convert options from bytes/JSON string to array if needed
+            for question in questions:
+                if isinstance(question['options'], bytes):
+                    try:
+                        question['options'] = json.loads(question['options'].decode('utf-8'))
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        question['options'] = []
+                elif isinstance(question['options'], str):
+                    try:
+                        question['options'] = json.loads(question['options'])
+                    except json.JSONDecodeError:
+                        question['options'] = []
 
-        # Get user's previous result if exists
+            # Get user's previous result if exists
+            # For content quizzes, we don't have quiz_results with content_id
+            # We'll check user_progress instead to see if they've completed this content
+            user_progress = execute_query(
+                "SELECT status, completed_at FROM user_progress "
+                "WHERE user_id = %s AND content_id = %s AND status = 'completed' "
+                "ORDER BY completed_at DESC LIMIT 1",
+                (current_user['id'], content_id),
+                fetch_one=True
+            )
+            
+            # For content quizzes, we don't have detailed quiz results yet
+            # This could be enhanced later by creating a content_quiz_results table
+            user_result = None
+            if user_progress:
+                user_result = {
+                    'completed': True,
+                    'completed_at': user_progress['completed_at']
+                }
+
+            # Create quiz response structure
+            quiz_data = {
+                'id': content_id,
+                'title': content.get('title', 'Quiz'),
+                'description': content.get('description', ''),
+                'passing_score': content.get('passing_score', 70),
+                'attempts_limit': content.get('attempts_limit', 3),
+                'questions': questions,
+                'user_result': user_result
+            }
+
+            app.logger.info(f"Successfully returning quiz data for content {content_id}")
+            return jsonify(quiz_data)
+
+        else:
+            # This is not a quiz content, try to get module quiz
+            app.logger.info(f"Content {content_id} is not a quiz, looking for module quiz")
+            
+            # Get quiz for this module
+            quiz = execute_query(
+                "SELECT q.* FROM quizzes q "
+                "JOIN modules m ON q.module_id = m.id "
+                "WHERE q.module_id = %s AND q.is_active = TRUE LIMIT 1",
+                (content['module_id'],),
+                fetch_one=True
+            )
+
+            if not quiz:
+                app.logger.warning(f"No active quiz found for module {content['module_id']}")
+                return jsonify({'message': 'No quiz available for this content'}), 404
+
+            app.logger.info(f"Found quiz {quiz['id']} for module {content['module_id']}")
+
+            # Get questions for this quiz (without correct answers)
+            questions = execute_query(
+                "SELECT id, question_text, question_type, options, points "
+                "FROM quiz_questions WHERE quiz_id = %s",
+                (quiz['id'],),
+                fetch_all=True
+            )
+
+            app.logger.info(f"Found {len(questions)} questions for quiz {quiz['id']}")
+
+                    # Get user's previous result if exists
         user_result = execute_query(
             "SELECT score, max_score, percentage, passed, completed_at "
             "FROM quiz_results "
@@ -3582,15 +3668,18 @@ def get_content_quiz(current_user, content_id):
             (current_user['id'], quiz['id']),
             fetch_one=True
         )
+        if user_result is None:
+            user_result = {}
 
-        # Structure the response to match frontend expectations
-        response = {
-            **quiz,  # Include all quiz fields at the top level
-            'questions': questions,
-            'user_result': user_result
-        }
+            # Structure the response to match frontend expectations
+            response = {
+                **quiz,  # Include all quiz fields at the top level
+                'questions': questions,
+                'user_result': user_result
+            }
 
-        return jsonify(response)
+            app.logger.info(f"Successfully returning quiz data for content {content_id}")
+            return jsonify(response)
 
     except Exception as e:
         app.logger.error(f"Error fetching content quiz: {str(e)}")
@@ -4088,6 +4177,107 @@ def update_content(current_user, content_id):
         execute_query(query, params)
 
         return jsonify({'message': 'Content updated successfully'}), 200
+
+@app.route('/content/<int:content_id>/quiz/submit', methods=['POST'])
+@token_required
+def submit_content_quiz(current_user, content_id):
+    """Submit quiz answers for a content-specific quiz"""
+    try:
+        data = request.get_json()
+        if 'answers' not in data or not isinstance(data['answers'], dict):
+            return jsonify({'message': 'Answers are required'}), 400
+
+        # Get content details and verify it's a quiz
+        content = execute_query(
+            "SELECT mc.*, m.id as module_id, m.title as module_title FROM module_content mc "
+            "JOIN modules m ON mc.module_id = m.id "
+            "WHERE mc.id = %s AND mc.content_type = 'quiz'",
+            (content_id,),
+            fetch_one=True
+        )
+        if not content:
+            return jsonify({'message': 'Quiz content not found'}), 404
+
+        # Get all questions for this content quiz
+        questions = execute_query(
+            "SELECT id, question_text, correct_answer, points FROM content_questions "
+            "WHERE content_id = %s",
+            (content_id,),
+            fetch_all=True
+        )
+
+        if not questions:
+            return jsonify({'message': 'No questions found for this quiz'}), 404
+
+        # Convert bytes to string for correct_answer if needed
+        for question in questions:
+            if isinstance(question['correct_answer'], bytes):
+                question['correct_answer'] = question['correct_answer'].decode('utf-8')
+
+        # Calculate score
+        total_score = 0
+        max_score = sum(q['points'] for q in questions)
+        correct_answers = {}
+        user_answers = data['answers']
+
+        for question in questions:
+            correct_answers[str(question['id'])] = question['correct_answer']
+            if str(question['id']) in user_answers and user_answers[str(question['id'])] == question['correct_answer']:
+                total_score += question['points']
+
+        percentage = (total_score / max_score) * 100 if max_score > 0 else 0
+        # Use a default passing score of 70% for content quizzes
+        passing_score = getattr(content, 'passing_score', 70)
+        passed = percentage >= passing_score
+
+        # Update user progress to mark content as completed
+        execute_query(
+            "INSERT INTO user_progress (user_id, content_id, status, completed_at, score, attempts) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON DUPLICATE KEY UPDATE "
+            "status = VALUES(status), completed_at = VALUES(completed_at), "
+            "score = VALUES(score), attempts = attempts + 1",
+            (
+                current_user['id'], content_id, 'completed',
+                datetime.now(timezone.utc), total_score, 1
+            )
+        )
+
+        response = {
+            'message': 'Quiz submitted successfully',
+            'content_id': content_id,
+            'module_id': content['module_id'],
+            'module_title': content['module_title'],
+            'score': total_score,
+            'max_score': max_score,
+            'percentage': percentage,
+            'passed': passed,
+            'badges_awarded': [],
+            'points_awarded': 0
+        }
+
+        if passed:
+            # Award points for passing the quiz
+            points_result = award_points(
+                current_user['id'],
+                app.config['POINTS_FOR_QUIZ'],
+                f"Passed content quiz {content_id} with score {percentage}%"
+            )
+            response['points_awarded'] = app.config['POINTS_FOR_QUIZ']
+            
+            if points_result.get('badges_awarded'):
+                response['badges_awarded'] = points_result['badges_awarded']
+
+            # Update leaderboard if user has an employer
+            if current_user.get('employer_id'):
+                update_leaderboard(current_user['id'], current_user['employer_id'])
+                response['leaderboard_update'] = True
+
+        return jsonify(response), 200
+
+    except Exception as e:
+        app.logger.error(f"Error submitting content quiz: {str(e)}")
+        return jsonify({'message': 'Error submitting quiz'}), 500
 
 if __name__=='__main__':
     app.run(debug=True)
