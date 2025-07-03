@@ -22,6 +22,7 @@ export const Sidebar: React.FC = () => {
     user: [
       { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard' },
       { icon: BookOpen, label: 'Training Modules', to: '/modules' },
+      { icon: FileText, label: 'Certificates', to: '/certificates' },
       { icon: Award, label: 'Leaderboard', to: '/leaderboard' },
       { icon: Download, label: 'Offline Content', to: '/offline' },
     ],

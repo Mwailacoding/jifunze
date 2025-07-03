@@ -8,7 +8,8 @@ import {
   Settings, 
   Bell,
   Award,
-  BookOpen
+  BookOpen,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -28,6 +29,7 @@ export const Navbar: React.FC = () => {
     user: [
       { to: '/dashboard', label: 'Dashboard', icon: BookOpen },
       { to: '/modules', label: 'Training Modules', icon: BookOpen },
+      { to: '/certificates', label: 'Certificates', icon: FileText },
       { to: '/leaderboard', label: 'Leaderboard', icon: Award },
     ],
     trainer: [

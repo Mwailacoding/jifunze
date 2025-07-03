@@ -83,12 +83,17 @@ interface Module {
   contents?: ModuleContent[];
   content_count?: number;
   quiz_count?: number;
+  quiz_passed?: boolean;
   learner_count?: number;
   completion_rate?: number;
   created_by_name?: string;
   user_progress?: UserProgress;
   youtube_video?: YouTubeVideo;
   offline_available?: boolean;
+  is_completed?: boolean;
+  has_certificate?: boolean;
+  is_locked?: boolean;
+  prerequisite_module_id?: number;
 }
 
 const transformModuleData = (apiData: any): Module => ({
@@ -109,12 +114,17 @@ const transformModuleData = (apiData: any): Module => ({
   })),
   content_count: apiData.content_count,
   quiz_count: apiData.quiz_count,
+  quiz_passed: apiData.quiz_passed,
   learner_count: apiData.learner_count,
   completion_rate: apiData.completion_rate,
   created_by_name: apiData.created_by_name,
   user_progress: apiData.user_progress,
   youtube_video: apiData.youtube_video,
-  offline_available: apiData.offline_available
+  offline_available: apiData.offline_available,
+  is_completed: apiData.is_completed,
+  has_certificate: apiData.has_certificate,
+  is_locked: apiData.is_locked,
+  prerequisite_module_id: apiData.prerequisite_module_id
 });
 
 // Implementation of the unused interfaces
@@ -145,23 +155,151 @@ const ContentCompletionButton = ({
   );
 }
 
-const ModuleLockScreen: FC = () => {
+const ModuleCompletionScreen: FC<{ module: Module }> = ({ module }) => {
+  const navigate = useNavigate();
+
   return (
-    <div className="text-center p-8 bg-neutral-50 rounded-lg">
-      <Lock className="w-12 h-12 mx-auto text-neutral-400 mb-4" />
-      <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-        Module Locked
-      </h3>
-      <p className="text-neutral-600 mb-6">
-        You need to complete the previous module to unlock this content.
-      </p>
-      <button
-        onClick={() => window.history.back()}
-        className="btn-outline"
-      >
-        Back to Modules
-      </button>
-    </div>
+    <Layout>
+      <div className="max-w-4xl mx-auto">
+        <div className="card p-8 text-center">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 text-green-600 mb-4">
+            <CheckCircle2 className="h-8 w-8" />
+          </div>
+
+          <h3 className="text-xl font-semibold mb-2">Module Completed!</h3>
+          <p className="text-neutral-600 mb-6">
+            Congratulations! You have successfully completed the &quot;{module.title}&quot; module.
+          </p>
+
+          {module.has_certificate && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-center mb-2">
+                <Star className="h-5 w-5 text-green-600 mr-2" />
+                <span className="font-medium text-green-800">Certificate Earned!</span>
+              </div>
+              <p className="text-sm text-green-700">
+                You have earned a certificate for completing this module.
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn-primary"
+            >
+              Back to Dashboard
+            </button>
+            <button
+              onClick={() => navigate('/certificates')}
+              className="btn-secondary"
+            >
+              View Certificates
+            </button>
+          </div>
+        </div>
+      </div>
+    </Layout>
+  );
+};
+
+const ModuleLockScreen: FC<{ prerequisiteModule: any }> = ({ prerequisiteModule }) => {
+  const navigate = useNavigate();
+
+  const contentIncomplete = prerequisiteModule.content_count
+    ? (prerequisiteModule.content_completed ?? 0) < prerequisiteModule.content_count
+    : false;
+
+  const quizNotPassed = prerequisiteModule.quiz_count
+    ? prerequisiteModule.quiz_count > 0 && !prerequisiteModule.quiz_passed
+    : false;
+
+  const progress =
+    prerequisiteModule.content_count && prerequisiteModule.content_completed
+      ? Math.round(
+          (prerequisiteModule.content_completed / prerequisiteModule.content_count) * 100
+        )
+      : 0;
+
+  return (
+    <Layout>
+      <div className="max-w-4xl mx-auto">
+        <div className="card p-8 text-center">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 text-red-600 mb-4">
+            <Lock className="h-8 w-8" />
+          </div>
+
+          <h3 className="text-xl font-semibold mb-2">Module Locked</h3>
+          <p className="text-neutral-600 mb-6">
+            You need to complete the &quot;{prerequisiteModule.title}&quot; module to access this content.
+          </p>
+
+          <div className="max-w-md mx-auto mb-8">
+            <div className="space-y-3 text-left">
+              {contentIncomplete && (
+                <div className="flex items-start">
+                  <div className="w-5 h-5 text-accent-600 mr-2 mt-0.5">⚠️</div>
+                  <div>
+                    <p className="font-medium">Complete all content in &quot;{prerequisiteModule.title}&quot;</p>
+                    <p className="text-sm text-neutral-600">
+                      {prerequisiteModule.content_completed} of {prerequisiteModule.content_count} lessons completed
+                    </p>
+                    <div className="mt-2">
+                      <ProgressBar value={progress} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {quizNotPassed && (
+                <div className="flex items-start">
+                  <div className="w-5 h-5 text-accent-600 mr-2 mt-0.5">⚠️</div>
+                  <div>
+                    <p className="font-medium">Pass the quiz in &quot;{prerequisiteModule.title}&quot;</p>
+                    <p className="text-sm text-neutral-600">
+                      You need to score at least 80% to pass
+                    </p>
+                    <button
+                      onClick={() => navigate(`/modules/${prerequisiteModule.id}`)}
+                      className="btn-secondary mt-2"
+                    >
+                      Go to Module
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!contentIncomplete && !quizNotPassed && (
+                <div className="flex items-start">
+                  <div className="w-5 h-5 text-green-600 mr-2 mt-0.5">✅</div>
+                  <div>
+                    <p className="font-medium">Prerequisite module completed!</p>
+                    <p className="text-sm text-neutral-600">
+                      You should now have access to this module
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-center gap-3">
+            <button
+              onClick={() => navigate(`/modules/${prerequisiteModule.id}`)}
+              className="btn-primary"
+            >
+              Go to &quot;{prerequisiteModule.title}&quot; Module
+            </button>
+            <button
+              onClick={() => navigate('/modules')}
+              className="btn-outline"
+            >
+              Browse Available Modules
+            </button>
+          </div>
+        </div>
+      </div>
+    </Layout>
   );
 };
 
@@ -219,6 +357,8 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
   const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizResult, setQuizResult] = useState<any>(null);
+  const [isModuleLocked, setIsModuleLocked] = useState(false);
+  const [prerequisiteModule, setPrerequisiteModule] = useState<any>(null);
 
   // Fetch module data
   useEffect(() => {
@@ -227,6 +367,26 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
       
       try {
         setIsLoading(true);
+        
+        // First, get all modules to check if this one is locked
+        const allModules = await apiClient.getModules();
+        const currentModuleIndex = allModules.findIndex((m: any) => m.id === parseInt(moduleId));
+        
+        if (currentModuleIndex > 0) {
+          const previousModule = allModules[currentModuleIndex - 1] as any;
+          const isLocked = previousModule && !(
+            previousModule.completion_percentage === 100 && 
+            (previousModule.quiz_count === 0 || previousModule.quiz_passed)
+          );
+          
+          setIsModuleLocked(isLocked);
+          if (isLocked) {
+            setPrerequisiteModule(previousModule);
+          }
+        } else {
+          setIsModuleLocked(false);
+        }
+        
         const apiData = await apiClient.getModule(parseInt(moduleId));
         const transformedData = transformModuleData(apiData);
         setModule(transformedData);
@@ -257,17 +417,33 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
 
   const handleContentComplete = async (content: ModuleContent) => {
     try {
-      await apiClient.updateProgress({
-        content_id: content.id,
-        status: 'completed'
-      });
-      
+      // Check if content is already completed
+      if (content.user_progress?.status === 'completed') {
+        showError('Already Completed', 'This content has already been completed.');
+        return;
+      }
+
+      const result = await apiClient.completeContent(content.id);
       showSuccess('Progress Updated', 'Content marked as completed!');
+      
+      // Check if certificate was awarded
+      if (result.certificate_awarded) {
+        showSuccess('Certificate Earned!', 'Congratulations! You have earned a certificate for completing this module.');
+      }
       
       if (moduleId) {
         const apiData = await apiClient.getModule(parseInt(moduleId));
         const updatedModule = transformModuleData(apiData);
         setModule(updatedModule);
+        
+        // Check if module is now completed
+        if (updatedModule.is_completed) {
+          showSuccess('Module Completed!', 'Congratulations! You have completed this module.');
+          // Redirect to completion screen or dashboard after a short delay
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 2000);
+        }
       }
   
       if (content.content_type === 'quiz') {
@@ -387,15 +563,70 @@ const ModuleDetailPage: FC<ModuleDetailPageProps> = ({ components }) => {
   if (!module) {
     return (
       <Layout>
-        <div className="text-center py-12">
-          <BookOpen className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-neutral-900 mb-2">Module not found</h3>
-          <button onClick={() => navigate('/modules')} className="btn-primary">
-            Back to Modules
-          </button>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <XCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Module Not Found</h2>
+            <p className="text-neutral-600 mb-4">The module you're looking for doesn't exist.</p>
+            <button onClick={() => navigate('/modules')} className="btn-primary">
+              Back to Modules
+            </button>
+          </div>
         </div>
       </Layout>
     );
+  }
+
+  // Show completion screen if module is completed
+  if (module.is_completed) {
+    return (
+      <Layout>
+        <div className="max-w-4xl mx-auto">
+          <div className="card p-8 text-center">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 text-green-600 mb-4">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
+
+            <h3 className="text-xl font-semibold mb-2">Module Completed!</h3>
+            <p className="text-neutral-600 mb-6">
+              Congratulations! You have successfully completed the &quot;{module.title}&quot; module.
+            </p>
+
+            {module.has_certificate && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-center mb-2">
+                  <Star className="h-5 w-5 text-green-600 mr-2" />
+                  <span className="font-medium text-green-800">Certificate Earned!</span>
+                </div>
+                <p className="text-sm text-green-700">
+                  You have earned a certificate for completing this module.
+                </p>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="btn-primary"
+              >
+                Back to Dashboard
+              </button>
+              <button
+                onClick={() => navigate('/certificates')}
+                className="btn-secondary"
+              >
+                View Certificates
+              </button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show lock screen if module is locked
+  if (isModuleLocked && prerequisiteModule) {
+    return <ModuleLockScreen prerequisiteModule={prerequisiteModule} />;
   }
 
   return (

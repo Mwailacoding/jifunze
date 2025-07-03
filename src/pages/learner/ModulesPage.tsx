@@ -34,6 +34,10 @@ export type Module = {
   completion_percentage?: number;
   content_completed?: number;
   quiz_passed?: boolean;
+  is_locked?: boolean;
+  prerequisite_module_id?: number;
+  is_completed?: boolean;
+  has_certificate?: boolean;
 };
 import { useAuth } from '../../contexts/AuthContext';
 import CertificateBadge from '../../components/ui/CertificateBadge';
@@ -372,6 +376,10 @@ export const ModulesPage: React.FC = () => {
             <div className="w-3 h-3 rounded-full bg-accent-500"></div>
             <span>In progress</span>
           </div>
+          <div className="flex items-center space-x-1">
+            <div className="w-3 h-3 rounded-full bg-neutral-400"></div>
+            <span>Locked</span>
+          </div>
         </div>
       </div>
 
@@ -381,13 +389,37 @@ export const ModulesPage: React.FC = () => {
           {filteredModules.map((module) => {
             const status = getModuleStatus(module);
             const hasCertificate = certificates[module.id];
+            const isLocked = module.is_locked;
+            const isCompleted = module.is_completed;
             
             return (
-              <div key={module.id} className="card card-hover overflow-hidden relative">
+              <div key={module.id} className={`card card-hover overflow-hidden relative ${isLocked || isCompleted ? 'opacity-75' : ''}`}>
                 {/* Certificate Badge */}
-                {hasCertificate && (
+                {hasCertificate && !isLocked && (
                   <div className="absolute top-4 right-4 z-10">
                     <CertificateBadge />
+                  </div>
+                )}
+
+                {/* Lock Overlay */}
+                {isLocked && (
+                  <div className="absolute inset-0 bg-neutral-900/50 flex items-center justify-center z-20">
+                    <div className="text-center text-white">
+                      <Lock className="w-12 h-12 mx-auto mb-2" />
+                      <p className="text-sm font-medium">Module Locked</p>
+                      <p className="text-xs opacity-75">Complete previous module to unlock</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Completion Overlay */}
+                {isCompleted && !isLocked && (
+                  <div className="absolute inset-0 bg-green-900/50 flex items-center justify-center z-20">
+                    <div className="text-center text-white">
+                      <CheckCircle2 className="w-12 h-12 mx-auto mb-2" />
+                      <p className="text-sm font-medium">Module Completed!</p>
+                      <p className="text-xs opacity-75">You have successfully completed this module</p>
+                    </div>
                   </div>
                 )}
 
@@ -396,11 +428,17 @@ export const ModulesPage: React.FC = () => {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center space-x-2">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                        isLocked ? 'bg-neutral-100' :
+                        isCompleted ? 'bg-green-100' :
                         status === 'certified' ? 'bg-gradient-to-br from-primary-500 to-secondary-500' :
                         status === 'completed' ? 'bg-neutral-100' :
                         status === 'in-progress' ? 'bg-accent-100' : 'bg-neutral-100'
                       }`}>
-                        {status === 'certified' ? (
+                        {isLocked ? (
+                          <Lock className="w-5 h-5 text-neutral-600" />
+                        ) : isCompleted ? (
+                          <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        ) : status === 'certified' ? (
                           <Award className="w-5 h-5 text-white" />
                         ) : (
                           <BookOpen className={`w-5 h-5 ${
@@ -413,7 +451,7 @@ export const ModulesPage: React.FC = () => {
                         {module.difficulty_level}
                       </span>
                     </div>
-                    {status === 'completed' && (
+                    {status === 'completed' && !isLocked && !isCompleted && (
                       <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
                         <CheckCircle2 className="w-5 h-5 text-primary-600" />
                       </div>
@@ -447,56 +485,79 @@ export const ModulesPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Progress */}
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-neutral-700">Progress</span>
-                      <span className="text-sm text-neutral-600">
-                        {module.completion_percentage || 0}%
-                        {hasCertificate && (
-                          <span className="ml-1 text-primary-600">+ Certificate</span>
-                        )}
-                      </span>
-                    </div>
-                    <ProgressBar 
-                      value={module.completion_percentage || 0}
-                      color={getProgressColor(module.completion_percentage || 0)}
-                      animated
-                    />
-                  </div>
-
-                  {/* Requirements */}
-                  <div className="mb-4">
-                    <div className="text-xs text-neutral-600 mb-1">
-                      Requirements to complete:
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <CheckCircle2 className={`w-4 h-4 ${
-                          module.content_completed === module.content_count ? 
-                          'text-primary-600' : 'text-neutral-300'
-                        }`} />
-                        <span className={`text-xs ${
-                          module.content_completed === module.content_count ?
-                          'text-neutral-700' : 'text-neutral-400'
-                        }`}>
-                          Complete all content ({module.content_completed || 0}/{module.content_count || 0})
+                  {/* Progress - Only show if not locked and not completed */}
+                  {!isLocked && !isCompleted && (
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-neutral-700">Progress</span>
+                        <span className="text-sm text-neutral-600">
+                          {module.completion_percentage || 0}%
+                          {hasCertificate && (
+                            <span className="ml-1 text-primary-600">+ Certificate</span>
+                          )}
                         </span>
                       </div>
-                      {(module.quiz_count !== undefined && module.quiz_count > 0) && (
+                      <ProgressBar 
+                        value={module.completion_percentage || 0}
+                        color={getProgressColor(module.completion_percentage || 0)}
+                        animated
+                      />
+                    </div>
+                  )}
+
+                  {/* Completion Status */}
+                  {isCompleted && !isLocked && (
+                    <div className="mb-4">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-green-800">Completed</span>
+                          {hasCertificate && (
+                            <span className="text-xs text-green-600">Certificate Earned</span>
+                          )}
+                        </div>
+                        <ProgressBar 
+                          value={100}
+                          color="green"
+                          animated={false}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Requirements - Only show if not locked and not completed */}
+                  {!isLocked && !isCompleted && (
+                    <div className="mb-4">
+                      <div className="text-xs text-neutral-600 mb-1">
+                        Requirements to complete:
+                      </div>
+                      <div className="space-y-1">
                         <div className="flex items-center space-x-2">
                           <CheckCircle2 className={`w-4 h-4 ${
-                            module.quiz_passed ? 'text-primary-600' : 'text-neutral-300'
+                            module.content_completed === module.content_count ? 
+                            'text-primary-600' : 'text-neutral-300'
                           }`} />
                           <span className={`text-xs ${
-                            module.quiz_passed ? 'text-neutral-700' : 'text-neutral-400'
+                            module.content_completed === module.content_count ?
+                            'text-neutral-700' : 'text-neutral-400'
                           }`}>
-                            Pass the quiz
+                            Complete all content ({module.content_completed || 0}/{module.content_count || 0})
                           </span>
                         </div>
-                      )}
+                        {(module.quiz_count !== undefined && module.quiz_count > 0) && (
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle2 className={`w-4 h-4 ${
+                              module.quiz_passed ? 'text-primary-600' : 'text-neutral-300'
+                            }`} />
+                            <span className={`text-xs ${
+                              module.quiz_passed ? 'text-neutral-700' : 'text-neutral-400'
+                            }`}>
+                              Pass the quiz
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Category */}
                   <div className="mb-4">
@@ -508,21 +569,28 @@ export const ModulesPage: React.FC = () => {
 
                 {/* Module Footer */}
                 <div className="px-6 pb-6">
-                  <Link
-                    to={`/modules/${module.id}`}
-                    className={`w-full flex items-center justify-center space-x-2 ${
-                      status === 'certified' ? 'btn-primary' :
-                      status === 'completed' ? 'btn-secondary' :
-                      status === 'in-progress' ? 'btn-accent' : 'btn-primary'
-                    }`}
-                  >
-                    <Play className="w-4 h-4" />
-                    <span>
-                      {status === 'certified' ? 'View Certificate' : 
-                       status === 'completed' ? 'Take Quiz' :
-                       status === 'in-progress' ? 'Continue' : 'Start'}
-                    </span>
-                  </Link>
+                  {isLocked ? (
+                    <div className="w-full flex items-center justify-center space-x-2 btn-disabled cursor-not-allowed">
+                      <Lock className="w-4 h-4" />
+                      <span>Locked</span>
+                    </div>
+                  ) : (
+                    <Link
+                      to={`/modules/${module.id}`}
+                      className={`w-full flex items-center justify-center space-x-2 ${
+                        status === 'certified' ? 'btn-primary' :
+                        status === 'completed' ? 'btn-secondary' :
+                        status === 'in-progress' ? 'btn-accent' : 'btn-primary'
+                      }`}
+                    >
+                      <Play className="w-4 h-4" />
+                      <span>
+                        {status === 'certified' ? 'View Certificate' : 
+                         status === 'completed' ? 'Take Quiz' :
+                         status === 'in-progress' ? 'Continue' : 'Start'}
+                      </span>
+                    </Link>
+                  )}
                 </div>
               </div>
             );

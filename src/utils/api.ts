@@ -1050,17 +1050,45 @@ class ApiClient {
   }
 
   async markContentComplete(contentId: number, moduleId: number): Promise<void> {
-    const response = await fetch(`/api/content/${contentId}/complete`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ moduleId }),
-    });
+    try {
+      const response = await this.post(`/content/${contentId}/complete`, {
+        content_id: contentId,
+        module_id: moduleId
+      });
+      // Don't return response since the method should return void
+    } catch (error: any) {
+      console.error('Error marking content complete:', error.response?.data?.message || error.message);
+      throw error;
+    }
+  }
 
-    if (!response.ok) {
-      throw new Error('Failed to mark content as complete');
+  async completeContent(contentId: number): Promise<{
+    message: string;
+    points_awarded: number;
+    all_content_completed: boolean;
+    module_completed: boolean;
+    quiz_required: boolean;
+    quiz_completed: boolean;
+    certificate_awarded: boolean;
+    badges_awarded?: string[];
+    module_points_awarded?: number;
+  }> {
+    try {
+      const response = await this.post(`/content/${contentId}/complete`, {});
+      return response as {
+        message: string;
+        points_awarded: number;
+        all_content_completed: boolean;
+        module_completed: boolean;
+        quiz_required: boolean;
+        quiz_completed: boolean;
+        certificate_awarded: boolean;
+        badges_awarded?: string[];
+        module_points_awarded?: number;
+      };
+    } catch (error: any) {
+      console.error('Error completing content:', error.response?.data?.message || error.message);
+      throw error;
     }
   }
 
