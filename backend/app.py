@@ -1888,14 +1888,19 @@ def get_next_module(current_user, module_id):
             (module_id,),
             fetch_all=True
         )
-        
-        completed_content = execute_query(
+
+        # Ensure all_content is a list (or empty list if None)
+        if all_content is None:
+            all_content = []
+
+        completed_content_result = execute_query(
             "SELECT COUNT(DISTINCT content_id) as count FROM user_progress "
             "WHERE user_id = %s AND status = 'completed' "
             "AND content_id IN (SELECT id FROM module_content WHERE module_id = %s)",
             (current_user['id'], module_id),
             fetch_one=True
-        )['count']
+        )
+        completed_content = completed_content_result['count'] if completed_content_result and 'count' in completed_content_result else 0
 
         if completed_content < len(all_content):
             return jsonify({
@@ -1975,10 +1980,19 @@ def get_content_questions(current_user, content_id):
         
         # Convert options from bytes/JSON string to array if needed
         for question in questions:
-            if isinstance(question['options'], bytes):
+            options = question.get('options')
+            if options is None:
+                question['options'] = []
+            elif isinstance(options, bytes):
                 try:
-                    question['options'] = json.loads(question['options'].decode('utf-8'))
+                    question['options'] = json.loads(options.decode('utf-8'))
                 except (json.JSONDecodeError, UnicodeDecodeError):
+                    question['options'] = []
+            elif isinstance(options, str):
+                try:
+                    question['options'] = json.loads(options)
+                except json.JSONDecodeError:
+                    question['options'] = []
                     question['options'] = []
             elif isinstance(question['options'], str):
                 try:

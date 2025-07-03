@@ -1,6 +1,6 @@
 import type React from "react"
 import { Link } from "react-router-dom"
-import { BookOpen, Lock, CheckCircle2, Clock, Users, Star, Play, Award } from "lucide-react"
+import { BookOpen, Lock, CheckCircle2, Clock, Users, Star, Play } from "lucide-react"
 import { ProgressBar } from "../../components/ui/ProgressBar"
 
 interface ModuleCardProps {
@@ -24,10 +24,9 @@ interface ModuleCardProps {
       title: string
     }>
   }
-  hasCertificate?: boolean
 }
 
-export const ModuleCard: React.FC<ModuleCardProps> = ({ module, hasCertificate = false }) => {
+export const ModuleCard: React.FC<ModuleCardProps> = ({ module }) => {
   const { completion_status } = module
   const completionPercentage =
     completion_status.content_count > 0
@@ -36,7 +35,7 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, hasCertificate =
 
   const getModuleStatus = () => {
     if (!module.has_access) return "locked"
-    if (completion_status.is_completed) return hasCertificate ? "certified" : "completed"
+    if (completion_status.is_completed) return "completed"
     if (completion_status.content_completed > 0) return "in-progress"
     return "not-started"
   }
@@ -60,8 +59,6 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, hasCertificate =
     switch (status) {
       case "locked":
         return <Lock className="w-5 h-5 text-neutral-400" />
-      case "certified":
-        return <Award className="w-5 h-5 text-yellow-600" />
       case "completed":
         return <CheckCircle2 className="w-5 h-5 text-green-600" />
       case "in-progress":
@@ -75,8 +72,6 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, hasCertificate =
     switch (status) {
       case "locked":
         return "bg-neutral-100"
-      case "certified":
-        return "bg-gradient-to-br from-yellow-500 to-yellow-600"
       case "completed":
         return "bg-green-100"
       case "in-progress":
@@ -88,15 +83,6 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, hasCertificate =
 
   const CardContent = () => (
     <div className={`card card-hover overflow-hidden relative ${!module.has_access ? "opacity-75" : ""}`}>
-      {/* Certificate Badge */}
-      {hasCertificate && (
-        <div className="absolute top-4 right-4 z-10">
-          <div className="w-8 h-8 bg-yellow-500 rounded-full flex items-center justify-center">
-            <Award className="w-5 h-5 text-white" />
-          </div>
-        </div>
-      )}
-
       {/* Module Header */}
       <div className="p-6 pb-4">
         <div className="flex items-start justify-between mb-3">
@@ -123,12 +109,6 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, hasCertificate =
             <Users className="w-4 h-4" />
             <span>{completion_status.content_count} lessons</span>
           </div>
-          {completion_status.quiz_count > 0 && (
-            <div className="flex items-center space-x-1">
-              <Star className="w-4 h-4" />
-              <span>{completion_status.quiz_count} quiz</span>
-            </div>
-          )}
         </div>
 
         {/* Access Status */}
@@ -150,12 +130,12 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, hasCertificate =
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-neutral-700">Progress</span>
               <span className="text-sm text-neutral-600">
-                {completionPercentage}%{hasCertificate && <span className="ml-1 text-yellow-600">+ Certificate</span>}
+                {completionPercentage}%
               </span>
             </div>
             <ProgressBar
               value={completionPercentage}
-              color={status === "completed" || status === "certified" ? "primary" : "secondary"}
+              color={status === "completed" ? "primary" : "secondary"}
               animated
             />
           </div>
@@ -212,26 +192,22 @@ export const ModuleCard: React.FC<ModuleCardProps> = ({ module, hasCertificate =
           className={`w-full flex items-center justify-center space-x-2 ${
             !module.has_access
               ? "btn-outline opacity-50 cursor-not-allowed"
-              : status === "certified"
-                ? "btn-primary"
-                : status === "completed"
-                  ? "btn-secondary"
-                  : status === "in-progress"
-                    ? "btn-accent"
-                    : "btn-primary"
+              : status === "completed"
+                ? "btn-secondary"
+                : status === "in-progress"
+                  ? "btn-accent"
+                  : "btn-primary"
           }`}
         >
           <Play className="w-4 h-4" />
           <span>
             {!module.has_access
               ? "Locked"
-              : status === "certified"
-                ? "View Certificate"
-                : status === "completed"
-                  ? "Review"
-                  : status === "in-progress"
-                    ? "Continue"
-                    : "Start"}
+              : status === "completed"
+                ? "Review"
+                : status === "in-progress"
+                  ? "Continue"
+                  : "Start"}
           </span>
         </div>
       </div>

@@ -35,29 +35,6 @@ export const QuizCompletionModal: React.FC<QuizCompletionModalProps> = ({
 }) => {
   const navigate = useNavigate();
   const { showSuccess } = useNotification();
-  const [certificate, setCertificate] = useState<{
-    id: string;
-    downloadUrl: string;
-  } | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (isOpen && passed) {
-      fetchCertificate();
-    }
-  }, [isOpen, passed]);
-
-  const fetchCertificate = async () => {
-    try {
-      setIsLoading(true);
-      const cert = await apiClient.getModuleCertificate(moduleId);
-      setCertificate(cert);
-    } catch (error) {
-      console.error('Failed to fetch certificate', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleRetakeQuiz = () => {
     navigate(`/modules/${moduleId}/quiz`);
@@ -71,12 +48,6 @@ export const QuizCompletionModal: React.FC<QuizCompletionModalProps> = ({
       navigate('/modules');
     }
     onClose();
-  };
-
-  const handleDownloadCertificate = () => {
-    if (certificate) {
-      window.open(certificate.downloadUrl, '_blank');
-    }
   };
 
   if (!isOpen) return null;
@@ -105,26 +76,6 @@ export const QuizCompletionModal: React.FC<QuizCompletionModalProps> = ({
               (Required: {passingScore}%)
             </p>
           </div>
-
-          {passed && certificate && (
-            <div className="mb-6 p-4 bg-blue-50 rounded-lg">
-              <div className="flex items-center justify-center mb-3">
-                <Award className="h-8 w-8 text-blue-600" />
-              </div>
-              <p className="text-sm text-blue-800 mb-3">
-                Congratulations! You've earned a certificate for completing this module.
-              </p>
-              <Button
-                onClick={handleDownloadCertificate}
-                variant="default"
-                className="w-full"
-                disabled={isLoading}
-              >
-                <Download className="w-4 h-4 mr-2" />
-                {isLoading ? 'Preparing...' : 'Download Certificate'}
-              </Button>
-            </div>
-          )}
 
           <div className="mt-6 flex flex-col space-y-3">
             {passed ? (

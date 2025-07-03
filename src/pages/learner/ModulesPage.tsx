@@ -37,10 +37,8 @@ export type Module = {
   is_locked?: boolean;
   prerequisite_module_id?: number;
   is_completed?: boolean;
-  has_certificate?: boolean;
 };
 import { useAuth } from '../../contexts/AuthContext';
-import CertificateBadge from '../../components/ui/CertificateBadge';
 
 interface ModuleLockScreenProps {
   module: {
@@ -185,27 +183,17 @@ export const ModulesPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [certificates, setCertificates] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const [modulesData, certificatesData] = await Promise.all([
-          apiClient.getModules(),
-          apiClient.getUserCertificates(currentUser.id)
+        const [modulesData] = await Promise.all([
+          apiClient.getModules()
         ]);
         
         setModules(modulesData);
         setFilteredModules(modulesData);
-        
-        // Create a map of module IDs to certificate status
-        const certMap = certificatesData.reduce((acc, cert) => {
-          acc[cert.module_id] = true;
-          return acc;
-        }, {} as Record<number, boolean>);
-        
-        setCertificates(certMap);
       } catch (error) {
         showError('Error', 'Failed to load data');
       } finally {
@@ -265,7 +253,7 @@ export const ModulesPage: React.FC = () => {
 
   const getModuleStatus = (module: Module): 'certified' | 'completed' | 'in-progress' | 'not-started' => {
       if (module.completion_percentage === 100) {
-        return certificates[module.id] ? 'certified' : 'completed';
+        return 'completed';
       }
       return (module.completion_percentage ?? 0) > 0 ? 'in-progress' : 'not-started';
   };
@@ -370,7 +358,7 @@ export const ModulesPage: React.FC = () => {
         <div className="flex items-center space-x-2 text-sm text-neutral-600">
           <div className="flex items-center space-x-1">
             <div className="w-3 h-3 rounded-full bg-primary-500"></div>
-            <span>Completed with certificate</span>
+            <span>Completed</span>
           </div>
           <div className="flex items-center space-x-1">
             <div className="w-3 h-3 rounded-full bg-accent-500"></div>
@@ -388,19 +376,11 @@ export const ModulesPage: React.FC = () => {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredModules.map((module) => {
             const status = getModuleStatus(module);
-            const hasCertificate = certificates[module.id];
             const isLocked = module.is_locked;
             const isCompleted = module.is_completed;
             
             return (
               <div key={module.id} className={`card card-hover overflow-hidden relative ${isLocked || isCompleted ? 'opacity-75' : ''}`}>
-                {/* Certificate Badge */}
-                {hasCertificate && !isLocked && (
-                  <div className="absolute top-4 right-4 z-10">
-                    <CertificateBadge />
-                  </div>
-                )}
-
                 {/* Lock Overlay */}
                 {isLocked && (
                   <div className="absolute inset-0 bg-neutral-900/50 flex items-center justify-center z-20">
@@ -430,7 +410,6 @@ export const ModulesPage: React.FC = () => {
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
                         isLocked ? 'bg-neutral-100' :
                         isCompleted ? 'bg-green-100' :
-                        status === 'certified' ? 'bg-gradient-to-br from-primary-500 to-secondary-500' :
                         status === 'completed' ? 'bg-neutral-100' :
                         status === 'in-progress' ? 'bg-accent-100' : 'bg-neutral-100'
                       }`}>
@@ -438,8 +417,6 @@ export const ModulesPage: React.FC = () => {
                           <Lock className="w-5 h-5 text-neutral-600" />
                         ) : isCompleted ? (
                           <CheckCircle2 className="w-5 h-5 text-green-600" />
-                        ) : status === 'certified' ? (
-                          <Award className="w-5 h-5 text-white" />
                         ) : (
                           <BookOpen className={`w-5 h-5 ${
                           status === 'completed' ? 'text-neutral-600' :
@@ -490,12 +467,6 @@ export const ModulesPage: React.FC = () => {
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium text-neutral-700">Progress</span>
-                        <span className="text-sm text-neutral-600">
-                          {module.completion_percentage || 0}%
-                          {hasCertificate && (
-                            <span className="ml-1 text-primary-600">+ Certificate</span>
-                          )}
-                        </span>
                       </div>
                       <ProgressBar 
                         value={module.completion_percentage || 0}
@@ -511,9 +482,6 @@ export const ModulesPage: React.FC = () => {
                       <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-green-800">Completed</span>
-                          {hasCertificate && (
-                            <span className="text-xs text-green-600">Certificate Earned</span>
-                          )}
                         </div>
                         <ProgressBar 
                           value={100}
@@ -578,15 +546,13 @@ export const ModulesPage: React.FC = () => {
                     <Link
                       to={`/modules/${module.id}`}
                       className={`w-full flex items-center justify-center space-x-2 ${
-                        status === 'certified' ? 'btn-primary' :
                         status === 'completed' ? 'btn-secondary' :
                         status === 'in-progress' ? 'btn-accent' : 'btn-primary'
                       }`}
                     >
                       <Play className="w-4 h-4" />
                       <span>
-                        {status === 'certified' ? 'View Certificate' : 
-                         status === 'completed' ? 'Take Quiz' :
+                        {status === 'completed' ? 'Take Quiz' :
                          status === 'in-progress' ? 'Continue' : 'Start'}
                       </span>
                     </Link>
